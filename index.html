@@ -1378,6 +1378,10 @@ function doPonerEnUsoPaila(item){
     .then(()=>addLog('uso',`En uso (Paila): ${item.name}`,`1 ${item.unit}`));
   closeM();
 }
+window._ponerEnUsoPailaById=(itemId)=>{
+  const item=items.find(i=>i.id===itemId); if(!item) return;
+  doPonerEnUsoPaila(item);
+};
 window.retirarUsoPaila=async(itemId,usoId)=>{
   const item=items.find(i=>i.id===itemId); if(!item) return;
   const u=item.pailaUsoItems?.find(x=>x.id===usoId); if(!u) return;
