@@ -636,7 +636,7 @@ function listPaila(){
           ? `<span class="badge b-zero" style="display:inline-flex">Paila: 0</span>`
           : `<span class="badge b-paila" style="display:inline-flex">Paila: ${stockP}</span>`}
         ${eu>0?`<br><span class="badge b-uso" style="display:inline-flex;margin-top:3px">En uso: ${eu}</span>`:''}
-        ${qtyCamino>0?`<br><span style="display:inline-flex;margin-top:3px;padding:2px 6px;border-radius:20px;font-size:10px;background:rgba(255,179,71,.15);color:#FFB347"><i class="ti ti-truck" style="font-size:9px;margin-right:3px"></i>${qtyCamino} en camino</span>`:''}
+        ${qtyCamino>0?`<br><span style="display:inline-flex;margin-top:3px;padding:2px 6px;border-radius:20px;font-size:10px;background:rgba(124,92,191,.18);color:#A78BFA"><i class="ti ti-truck" style="font-size:9px;margin-right:3px"></i>${qtyCamino} en camino</span>`:''}
       </div>`;
     }
     h+=`<div class="row row-clickable" onclick="window.openItemDetail('${item.id}')">
@@ -647,7 +647,7 @@ function listPaila(){
       ${stockBadge}
       <div style="display:flex;gap:3px;flex-shrink:0;flex-wrap:wrap" onclick="event.stopPropagation()">
         <button class="btn btn-green btn-sm" onclick="window.openM('ingreso','${item.id}','paila')"><i class="ti ti-plus"></i> Ingreso</button>
-        ${stockLab>0?`<button class="btn btn-accent btn-sm" onclick="window.openM('labToPaila','${item.id}')" title="Pasar del Lab a La Paila"><i class="ti ti-arrow-right"></i> Del Lab</button>`:''}
+        ${stockLab>0?`<button class="btn btn-accent btn-sm" onclick="window.openM('labToPailaDirecto','${item.id}')" title="Pasar del Lab a La Paila"><i class="ti ti-arrow-right"></i> Del Lab</button>`:''}
         ${!pailaAgotada?`<button class="btn btn-warn btn-sm" onclick="window.openM('usarPaila','${item.id}')"><i class="ti ti-player-play"></i> Usar</button>`:''}
         ${!pailaAgotada?`<button class="btn btn-danger btn-sm" onclick="window.openM('salida','${item.id}','paila')"><i class="ti ti-door-exit"></i></button>`:''}
         <button class="btn btn-purple btn-sm" onclick="window.quickPedir('${item.id}')"${item._pedidoPendiente?' style="opacity:.5"':''}><i class="ti ti-shopping-cart"></i></button>
@@ -1027,6 +1027,21 @@ window.openM=(type,...args)=>{
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="closeM()">Cancelar</button>
         <button class="btn btn-sm" style="background:#FFB347;color:#1a0800" onclick="window.doLabToPaila('${item.id}',${stockLab},${stockP},'${txt(item.unit)}','${txt(item.name)}')"><i class="ti ti-arrow-right"></i> Pasar a La Paila</button>
+      </div>
+    </div></div>`;
+
+  } else if(type==='labToPailaDirecto'){
+    if(!item) return;
+    const stockLab=item.lab||0;
+    const stockP=item.paila||0;
+    if(stockLab<=0){alert('Sin stock en laboratorio para registrar');return;}
+    area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
+      <h3><i class="ti ti-arrow-right" style="color:#00C9B1"></i>Registrar ingreso desde Lab · ${txt(item.name)}</h3>
+      <div class="info-box" style="border-color:rgba(0,201,177,.3);color:#00C9B1">Disponible en laboratorio: <b>${stockLab} ${txt(item.unit)}</b></div>
+      <div class="field"><label>Cantidad recibida en La Paila</label><input id="m-qty" type="number" min="1" max="${stockLab}" value="1" autofocus></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeM()">Cancelar</button>
+        <button class="btn btn-accent btn-sm" onclick="window.doLabToPailaDirecto('${item.id}',${stockLab},${stockP},'${txt(item.unit)}','${txt(item.name)}')"><i class="ti ti-check"></i> Confirmar ingreso</button>
       </div>
     </div></div>`;
 
@@ -1533,6 +1548,16 @@ window.doLabToPaila=async(id,prevL,prevP,unit,name)=>{
   await addLog('transfer',`${name}: laboratorio → En camino a La Paila`,`${qty} ${unit}`);
   closeM();
   // Preguntar si agrega a remisiones (traslado permanente a La Paila)
+  openM('preguntarRemisionPaila',id,{qty,unit,name});
+};
+
+window.doLabToPailaDirecto=async(id,prevL,prevP,unit,name)=>{
+  const qty=parseInt($('m-qty')?.value)||0;
+  if(qty<=0||qty>prevL){alert('Cantidad no válida');return;}
+  // Suma directo al stock de la paila (ya está físicamente allá)
+  await updateDoc(doc(db,'items',id),{lab:prevL-qty,paila:prevP+qty});
+  await addLog('transfer',`${name}: laboratorio → La Paila (ingreso directo)`,`${qty} ${unit}`);
+  closeM();
   openM('preguntarRemisionPaila',id,{qty,unit,name});
 };
 window._abrirConfirmFullPaila=(id)=>{
