@@ -1474,7 +1474,18 @@ window.imprimirPedido=(id)=>{
     <h1>Pedido de Insumos · Laboratorio HDSR</h1><p>Fecha: ${p.fecha} &nbsp;·&nbsp; Total: ${p.items.length} ítems</p>
     <table><thead><tr><th>Insumo</th><th>Cantidad</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table>
     <p style="margin-top:20px;font-size:11px;color:#888">Generado: ${ts()}</p>
-    <scr'+'ipt>window.onload=()=>{const doPrint=()=>window.print();const imgs=Array.from(document.images);if(!imgs.length){setTimeout(doPrint,400);return;}let loaded=0;const tryPrint=()=>{loaded++;if(loaded>=imgs.length)setTimeout(doPrint,300);};imgs.forEach(img=>{if(img.complete)tryPrint();else{img.onload=tryPrint;img.onerror=tryPrint;}});};<\/script></body></html>`);
+  </body>
+  <div style="display:none"><scr'+'ipt>
+  window.onload=()=>{
+    var doPrint=function(){window.print();};
+    var imgs=Array.from(document.images);
+    if(!imgs.length){setTimeout(doPrint,400);return;}
+    var loaded=0;
+    var tryPrint=function(){loaded++;if(loaded>=imgs.length)setTimeout(doPrint,300);};
+    imgs.forEach(function(img){if(img.complete)tryPrint();else{img.onload=tryPrint;img.onerror=tryPrint;}});
+  };
+  <\/scr'+'ipt></div>
+  </html>`);
   win.document.close();
 };
 
@@ -1854,10 +1865,7 @@ function generarImpresionRemision(r){
     </div>
     <div style="margin-top:8px">
       <div class="section-title">SERVICIO / DESTINO</div>
-      <div class="dest-row">
-        ${(cfg.services||[]).map(s=>`<div class="dest-item"><span class="checkbox" ${s===r.destino?'style="background:#000"':''}></span> ${s}</div>`).join('')}
-        <div class="dest-item"><span class="checkbox"></span> Otro: ___________________________</div>
-      </div>
+      <div style="border-bottom:1px solid #000;min-height:22px;margin-top:6px;width:100%"></div>
     </div>`}
   </div>
 
@@ -1875,8 +1883,18 @@ function generarImpresionRemision(r){
     <div class="firma-box"><div class="firma-line"></div><div class="firma-label">Persona que recibe<br>Nombre y firma</div></div>
   </div>
 
-  <scr'+'ipt>window.onload=()=>{const doPrint=()=>window.print();const imgs=Array.from(document.images);if(!imgs.length){setTimeout(doPrint,400);return;}let loaded=0;const tryPrint=()=>{loaded++;if(loaded>=imgs.length)setTimeout(doPrint,300);};imgs.forEach(img=>{if(img.complete)tryPrint();else{img.onload=tryPrint;img.onerror=tryPrint;}});};<\/script>
-  </body></html>`);
+  </body>
+  <div style="display:none"><scr'+'ipt>
+  window.onload=()=>{
+    var doPrint=function(){window.print();};
+    var imgs=Array.from(document.images);
+    if(!imgs.length){setTimeout(doPrint,400);return;}
+    var loaded=0;
+    var tryPrint=function(){loaded++;if(loaded>=imgs.length)setTimeout(doPrint,300);};
+    imgs.forEach(function(img){if(img.complete)tryPrint();else{img.onload=tryPrint;img.onerror=tryPrint;}});
+  };
+  <\/scr'+'ipt></div>
+  </html>`);
   win.document.close();
 }
 
@@ -1999,8 +2017,18 @@ window.imprimirReporte=(id)=>{
     <div class="firma-box"><div class="firma-line"></div><div class="firma-label">Recibido por (calidad / coordinación)<br>Nombre y firma</div></div>
   </div>
 
-  <scr'+'ipt>window.onload=()=>{const doPrint=()=>window.print();const imgs=Array.from(document.images);if(!imgs.length){setTimeout(doPrint,400);return;}let loaded=0;const tryPrint=()=>{loaded++;if(loaded>=imgs.length)setTimeout(doPrint,300);};imgs.forEach(img=>{if(img.complete)tryPrint();else{img.onload=tryPrint;img.onerror=tryPrint;}});};<\/script>
-  </body></html>`);
+  </body>
+  <div style="display:none"><scr'+'ipt>
+  window.onload=()=>{
+    var doPrint=function(){window.print();};
+    var imgs=Array.from(document.images);
+    if(!imgs.length){setTimeout(doPrint,400);return;}
+    var loaded=0;
+    var tryPrint=function(){loaded++;if(loaded>=imgs.length)setTimeout(doPrint,300);};
+    imgs.forEach(function(img){if(img.complete)tryPrint();else{img.onload=tryPrint;img.onerror=tryPrint;}});
+  };
+  <\/scr'+'ipt></div>
+  </html>`);
   win.document.close();
 };
 
