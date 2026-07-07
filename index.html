@@ -1474,7 +1474,7 @@ window.imprimirPedido=(id)=>{
     <h1>Pedido de Insumos · Laboratorio HDSR</h1><p>Fecha: ${p.fecha} &nbsp;·&nbsp; Total: ${p.items.length} ítems</p>
     <table><thead><tr><th>Insumo</th><th>Cantidad</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table>
     <p style="margin-top:20px;font-size:11px;color:#888">Generado: ${ts()}</p>
-    <scr'+'ipt>window.onload=()=>window.print();<\/script></body></html>`);
+    <scr'+'ipt>window.onload=()=>{const doPrint=()=>window.print();const imgs=Array.from(document.images);if(!imgs.length){setTimeout(doPrint,400);return;}let loaded=0;const tryPrint=()=>{loaded++;if(loaded>=imgs.length)setTimeout(doPrint,300);};imgs.forEach(img=>{if(img.complete)tryPrint();else{img.onload=tryPrint;img.onerror=tryPrint;}});};<\/script></body></html>`);
   win.document.close();
 };
 
@@ -1875,7 +1875,7 @@ function generarImpresionRemision(r){
     <div class="firma-box"><div class="firma-line"></div><div class="firma-label">Persona que recibe<br>Nombre y firma</div></div>
   </div>
 
-  <scr'+'ipt>window.onload=()=>window.print();<\/script>
+  <scr'+'ipt>window.onload=()=>{const doPrint=()=>window.print();const imgs=Array.from(document.images);if(!imgs.length){setTimeout(doPrint,400);return;}let loaded=0;const tryPrint=()=>{loaded++;if(loaded>=imgs.length)setTimeout(doPrint,300);};imgs.forEach(img=>{if(img.complete)tryPrint();else{img.onload=tryPrint;img.onerror=tryPrint;}});};<\/script>
   </body></html>`);
   win.document.close();
 }
@@ -1999,7 +1999,7 @@ window.imprimirReporte=(id)=>{
     <div class="firma-box"><div class="firma-line"></div><div class="firma-label">Recibido por (calidad / coordinación)<br>Nombre y firma</div></div>
   </div>
 
-  <scr'+'ipt>window.onload=()=>window.print();<\/script>
+  <scr'+'ipt>window.onload=()=>{const doPrint=()=>window.print();const imgs=Array.from(document.images);if(!imgs.length){setTimeout(doPrint,400);return;}let loaded=0;const tryPrint=()=>{loaded++;if(loaded>=imgs.length)setTimeout(doPrint,300);};imgs.forEach(img=>{if(img.complete)tryPrint();else{img.onload=tryPrint;img.onerror=tryPrint;}});};<\/script>
   </body></html>`);
   win.document.close();
 };
