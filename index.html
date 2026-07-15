@@ -180,7 +180,7 @@ html,body{background:#0F1923;color:#E8F4F2;font-family:system-ui,-apple-system,s
     <span style="color:#2E4560">→</span>
     <span style="display:flex;align-items:center;gap:3px"><span style="width:6px;height:6px;border-radius:50%;background:#00C9B1;display:inline-block"></span><span style="color:#E8F4F2">Laboratorio</span></span>
     <span style="color:#2E4560">/</span>
-    <span style="display:flex;align-items:center;gap:3px"><span style="width:6px;height:6px;border-radius:50%;background:#FFB347;display:inline-block"></span><span style="color:#E8F4F2">La Paila</span></span>
+    <span style="display:flex;align-items:center;gap:3px"><span style="width:6px;height:6px;border-radius:50%;background:#FFB347;display:inline-block"></span><span style="color:#E8F4F2">Microbiología</span></span>
     <span style="color:#2E4560">→</span>
     <span style="display:flex;align-items:center;gap:3px"><span style="width:6px;height:6px;border-radius:50%;background:#F5A623;display:inline-block"></span><span style="color:#F5A623">En uso</span></span>
     <span style="color:#2E4560">→</span>
@@ -428,7 +428,7 @@ function renderTotal(){
   const tA=items.reduce((a,i)=>a+i.almacen,0);
   const tL=items.reduce((a,i)=>a+i.lab,0);
   const tP=items.reduce((a,i)=>a+(i.paila||0),0);
-  const tLabs=tL+tP; // Lab + Paila juntos como "Laboratorio"
+  const tLabs=tL+tP; // Lab + Micro juntos como "Laboratorio"
   const tS=tA+tLabs;
   const tU=items.reduce((a,i)=>a+(i.usoItems?.length||0)+(i.pailaUsoItems?.length||0),0);
   const nBajos=items.filter(i=>(i.almacen+i.lab+(i.paila||0))>0&&(i.almacen+i.lab+(i.paila||0))<=i.min).length;
@@ -436,7 +436,7 @@ function renderTotal(){
   return `<div class="stats">
     <div class="stat"><div class="stat-val" style="color:#4CAF7D">${tS}</div><div class="stat-lbl">Total stock</div></div>
     <div class="stat"><div class="stat-val">${tA}</div><div class="stat-lbl">Almacén</div></div>
-    <div class="stat"><div class="stat-val">${tLabs}</div><div class="stat-lbl">Lab + Paila</div></div>
+    <div class="stat"><div class="stat-val">${tLabs}</div><div class="stat-lbl">Lab + Micro</div></div>
     <div class="stat"><div class="stat-val" style="color:#F5A623">${tU}</div><div class="stat-lbl">En uso</div></div>
     <div class="stat clickable ${ST.statFilter==='bajo'?'active-filter':''}" onclick="window._setStatFilter('bajo')"><div class="stat-val" style="color:${nBajos?'#F5A623':'#00C9B1'}">${nBajos}</div><div class="stat-lbl">Stock bajo ${nBajos?'(ver)':''}</div></div>
     <div class="stat clickable ${ST.statFilter==='agotado'?'active-filter':''}" onclick="window._setStatFilter('agotado')"><div class="stat-val" style="color:${nAgot?'#E8484A':'#00C9B1'}">${nAgot}</div><div class="stat-lbl">Agotados ${nAgot?'(ver)':''}</div></div>
@@ -460,7 +460,7 @@ function listTotal(){
     h+=`<div class="row row-clickable" onclick="window.openItemDetail('${item.id}')">
       <div style="flex:1;min-width:0">
         <div class="item-name">${txt(item.name)}</div>
-        <div class="item-sub">${txt(item.cat)} · Almacén: <b style="color:#E8F4F2">${item.almacen}</b> · Lab: <b style="color:#E8F4F2">${item.lab}</b> · La Paila: <b style="color:#E8F4F2">${paila}</b>${euTotal?` · <span style="color:#F5A623">${euTotal} en uso</span>`:''}</div>
+        <div class="item-sub">${txt(item.cat)} · Almacén: <b style="color:#E8F4F2">${item.almacen}</b> · Lab: <b style="color:#E8F4F2">${item.lab}</b> · Micro: <b style="color:#E8F4F2">${paila}</b>${euTotal?` · <span style="color:#F5A623">${euTotal} en uso</span>`:''}</div>
       </div>
       ${tb}
       <button class="btn btn-purple btn-sm" onclick="event.stopPropagation();window.quickPedir('${item.id}')" title="Agregar a pedido"${item._pedidoPendiente?' style="opacity:.5"':''}><i class="ti ti-shopping-cart"></i></button>
@@ -569,7 +569,7 @@ function listLab(){
         <button class="btn btn-green btn-sm" onclick="window.openM('ingreso','${item.id}','lab')"><i class="ti ti-plus"></i> Ingreso</button>
         ${!labAgotado?`<button class="btn btn-warn btn-sm" onclick="window.openM('usar','${item.id}')"><i class="ti ti-player-play"></i> Usar</button>`:''}
         ${!labAgotado?`<button class="btn btn-danger btn-sm" onclick="window.openM('salida','${item.id}','lab')"><i class="ti ti-door-exit"></i></button>`:''}
-        <button class="btn btn-sm" style="background:#FFB347;color:#1a0800" onclick="window.openM('labToPaila','${item.id}')" title="Pasar a La Paila"><i class="ti ti-arrow-right"></i> Paila</button>
+        <button class="btn btn-sm" style="background:#FFB347;color:#1a0800" onclick="window.openM('labToPaila','${item.id}')" title="Pasar a Microbiología"><i class="ti ti-arrow-right"></i> Microbiología</button>
         <button class="btn btn-purple btn-sm" onclick="window.quickPedir('${item.id}')"${item._pedidoPendiente?' style="opacity:.5"':''}><i class="ti ti-shopping-cart"></i></button>
       </div>
     </div>`;
@@ -598,7 +598,7 @@ function renderPaila(){
         </div>
       </div>`).join('');
     bannerCamino=`<div style="background:rgba(255,179,71,.08);border:1px solid rgba(255,179,71,.35);border-radius:8px;padding:10px 12px;margin-bottom:12px">
-      <div style="font-size:12px;font-weight:600;color:#FFB347;margin-bottom:8px"><i class="ti ti-truck" style="margin-right:5px"></i>En camino a La Paila · ${enCamino.length} pendiente${enCamino.length>1?'s':''} de confirmar recepción</div>
+      <div style="font-size:12px;font-weight:600;color:#FFB347;margin-bottom:8px"><i class="ti ti-truck" style="margin-right:5px"></i>En camino a Microbiología · ${enCamino.length} pendiente${enCamino.length>1?'s':''} de confirmar recepción</div>
       ${filas}
     </div>`;
   }
@@ -608,11 +608,11 @@ function renderPaila(){
     <div class="stat" style="border-color:rgba(255,179,71,.3)"><div class="stat-val" style="color:#FFB347">${tP}</div><div class="stat-lbl">Unidades en stock</div></div>
     <div class="stat" style="border-color:rgba(255,179,71,.3)"><div class="stat-val" style="color:#F5A623">${items.reduce((a,i)=>a+(i.pailaUsoItems?.length||0),0)}</div><div class="stat-lbl">En uso</div></div>
     <div class="stat clickable ${ST.statFilter==='bajo'?'active-filter':''}" onclick="window._setStatFilter('bajo')"><div class="stat-val" style="color:${nBajos?'#F5A623':'#00C9B1'}">${nBajos}</div><div class="stat-lbl">Stock bajo ${nBajos?'(ver)':''}</div></div>
-    <div class="stat clickable ${ST.statFilter==='agotado'?'active-filter':''}" onclick="window._setStatFilter('agotado')"><div class="stat-val" style="color:${nAgot?'#E8484A':'#00C9B1'}">${nAgot}</div><div class="stat-lbl">Paila agotada+uso ${nAgot?'(ver)':''}</div></div>
+    <div class="stat clickable ${ST.statFilter==='agotado'?'active-filter':''}" onclick="window._setStatFilter('agotado')"><div class="stat-val" style="color:${nAgot?'#E8484A':'#00C9B1'}">${nAgot}</div><div class="stat-lbl">Micro agotada+uso ${nAgot?'(ver)':''}</div></div>
   </div>
-  ${ST.statFilter==='bajo'?`<div class="info-box" style="margin-bottom:8px;border-color:rgba(255,179,71,.4);color:#FFB347"><b>Stock total bajo (almacén + La Paila)</b> · <button onclick="window._setStatFilter('')" style="background:none;border:none;color:#FFB347;cursor:pointer;font-size:12px">✕ Quitar filtro</button></div>`:''}
+  ${ST.statFilter==='bajo'?`<div class="info-box" style="margin-bottom:8px;border-color:rgba(255,179,71,.4);color:#FFB347"><b>Stock total bajo (almacén + Microbiología)</b> · <button onclick="window._setStatFilter('')" style="background:none;border:none;color:#FFB347;cursor:pointer;font-size:12px">✕ Quitar filtro</button></div>`:''}
   ${ST.statFilter==='agotado'?`<div class="info-box" style="margin-bottom:8px;border-color:rgba(255,179,71,.4);color:#FFB347"><b>Sin stock en Paila pero con insumos en uso</b> · <button onclick="window._setStatFilter('')" style="background:none;border:none;color:#FFB347;cursor:pointer;font-size:12px">✕ Quitar filtro</button></div>`:''}
-  ${searchBarHTML('Buscar en La Paila...')}${filterBarHTML()}
+  ${searchBarHTML('Buscar en Microbiología...')}${filterBarHTML()}
   <div id="itemList">${listPaila()}</div>`;
 }
 function listPaila(){
@@ -628,7 +628,7 @@ function listPaila(){
   if(!filtered.length){
     if(ST.statFilter==='bajo') return `<div class="empty"><i class="ti ti-check"></i><span style="color:#4CAF7D">Ningún insumo con stock bajo ✓</span></div>`;
     if(ST.statFilter==='agotado') return `<div class="empty"><i class="ti ti-check"></i><span style="color:#4CAF7D">Todo en orden ✓</span></div>`;
-    return `<div class="empty"><i class="ti ti-circle"></i><span style="color:#7A9BB5">Sin insumos en La Paila aún</span></div>`;
+    return `<div class="empty"><i class="ti ti-circle"></i><span style="color:#7A9BB5">Sin insumos en Microbiología aún</span></div>`;
   }
   let h=`<div class="card"><div class="card-body">`;
   filtered.forEach(item=>{
@@ -645,7 +645,7 @@ function listPaila(){
     } else {
       stockBadge=`<div style="text-align:right;min-width:60px">
         ${pailaAgotada
-          ? `<span class="badge b-zero" style="display:inline-flex">Paila: 0</span>`
+          ? `<span class="badge b-zero" style="display:inline-flex">Micro: 0</span>`
           : `<span class="badge b-paila" style="display:inline-flex">Paila: ${stockP}</span>`}
         ${eu>0?`<br><span class="badge b-uso" style="display:inline-flex;margin-top:3px">En uso: ${eu}</span>`:''}
         ${qtyCamino>0?`<br><span style="display:inline-flex;margin-top:3px;padding:2px 6px;border-radius:20px;font-size:10px;background:rgba(124,92,191,.18);color:#A78BFA"><i class="ti ti-truck" style="font-size:9px;margin-right:3px"></i>${qtyCamino} en camino</span>`:''}
@@ -659,7 +659,7 @@ function listPaila(){
       ${stockBadge}
       <div style="display:flex;gap:3px;flex-shrink:0;flex-wrap:wrap" onclick="event.stopPropagation()">
         <button class="btn btn-green btn-sm" onclick="window.openM('ingreso','${item.id}','paila')"><i class="ti ti-plus"></i> Ingreso</button>
-        ${stockLab>0?`<button class="btn btn-accent btn-sm" onclick="window.openM('labToPailaDirecto','${item.id}')" title="Pasar del Lab a La Paila"><i class="ti ti-arrow-right"></i> Del Lab</button>`:''}
+        ${stockLab>0?`<button class="btn btn-accent btn-sm" onclick="window.openM('labToPailaDirecto','${item.id}')" title="Pasar a Microbiología"><i class="ti ti-arrow-right"></i> Del Lab</button>`:''}
         ${!pailaAgotada?`<button class="btn btn-warn btn-sm" onclick="window.openM('usarPaila','${item.id}')"><i class="ti ti-player-play"></i> Usar</button>`:''}
         ${!pailaAgotada?`<button class="btn btn-danger btn-sm" onclick="window.openM('salida','${item.id}','paila')"><i class="ti ti-door-exit"></i></button>`:''}
         <button class="btn btn-purple btn-sm" onclick="window.quickPedir('${item.id}')"${item._pedidoPendiente?' style="opacity:.5"':''}><i class="ti ti-shopping-cart"></i></button>
@@ -702,13 +702,13 @@ function listUso(){
     });
     h+=`</div></div>`;
   }
-  // ── Sección La Paila ──
+  // ── Sección Microbiología ──
   if(enUsoPaila.length){
-    h+=`<div class="sec-title" style="color:#FFB347;margin-top:${enUsoLab.length?'10px':'0'}">La Paila</div><div class="card" style="border-color:rgba(255,179,71,.25)"><div class="card-body">`;
+    h+=`<div class="sec-title" style="color:#FFB347;margin-top:${enUsoLab.length?'10px':'0'}">Microbiología</div><div class="card" style="border-color:rgba(255,179,71,.25)"><div class="card-body">`;
     enUsoPaila.forEach(item=>{
       const stockInfo=(item.paila||0)>0
         ?`<span style="color:#FFB347">Stock Paila: ${item.paila}</span>`
-        :`<span style="color:#E8484A">Stock Paila: 0</span>`;
+        :`<span style="color:#E8484A">Stock Micro: 0</span>`;
       item.pailaUsoItems.forEach((u,idx)=>{
         h+=`<div class="row">
           <div style="flex:1;min-width:0">
@@ -993,7 +993,7 @@ window.openM=(type,...args)=>{
     const lugar=from==='paila'?'La Paila':from==='lab'?'Laboratorio':'Almacén';
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
       <h3><i class="ti ti-plus" style="color:${color}"></i>Ingreso a ${lugar} · ${txt(item.name)}</h3>
-      <div class="info-box">Almacén: <b>${item.almacen}</b> · Laboratorio: <b>${item.lab}</b> · Paila: <b>${paila}</b></div>
+      <div class="info-box">Almacén: <b>${item.almacen}</b> · Laboratorio: <b>${item.lab}</b> · Micro: <b>${paila}</b></div>
       <div class="field"><label>Cantidad que ingresa</label><input id="m-qty" type="number" min="1" value="1" autofocus></div>
       ${origenSelect}
       <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-green" style="background:${color};color:#0F1923" onclick="window.doIngreso('${item.id}','${from}',${item.almacen},${item.lab},'${txt(item.unit)}','${txt(item.name)}',${paila})"><i class="ti ti-check"></i> Registrar ingreso</button></div>
@@ -1031,14 +1031,14 @@ window.openM=(type,...args)=>{
     if(!item) return;
     const stockLab=item.lab||0;
     const stockP=item.paila||0;
-    if(stockLab<=0){alert('Sin stock en laboratorio para pasar a La Paila');return;}
+    if(stockLab<=0){alert('Sin stock en laboratorio para pasar a Microbiología');return;}
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
-      <h3><i class="ti ti-arrow-right" style="color:#FFB347"></i>Laboratorio → La Paila · ${txt(item.name)}</h3>
+      <h3><i class="ti ti-arrow-right" style="color:#FFB347"></i>Laboratorio → Microbiología · ${txt(item.name)}</h3>
       <div class="info-box" style="border-color:rgba(255,179,71,.3);color:#FFB347">Disponible en laboratorio: <b>${stockLab} ${txt(item.unit)}</b></div>
-      <div class="field"><label>Cantidad a pasar a La Paila</label><input id="m-qty" type="number" min="1" max="${stockLab}" value="1" autofocus></div>
+      <div class="field"><label>Cantidad a pasar a Microbiología</label><input id="m-qty" type="number" min="1" max="${stockLab}" value="1" autofocus></div>
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="closeM()">Cancelar</button>
-        <button class="btn btn-sm" style="background:#FFB347;color:#1a0800" onclick="window.doLabToPaila('${item.id}',${stockLab},${stockP},'${txt(item.unit)}','${txt(item.name)}')"><i class="ti ti-arrow-right"></i> Pasar a La Paila</button>
+        <button class="btn btn-sm" style="background:#FFB347;color:#1a0800" onclick="window.doLabToPaila('${item.id}',${stockLab},${stockP},'${txt(item.unit)}','${txt(item.name)}')"><i class="ti ti-arrow-right"></i> Pasar a Microbiología</button>
       </div>
     </div></div>`;
 
@@ -1046,11 +1046,11 @@ window.openM=(type,...args)=>{
     if(!item) return;
     const stockLab=item.lab||0;
     const stockP=item.paila||0;
-    if(stockLab<=0){alert('Sin stock en laboratorio para registrar');return;}
+    if(stockLab<=0){alert('Sin stock en laboratorio para registrar en Microbiología');return;}
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
       <h3><i class="ti ti-arrow-right" style="color:#00C9B1"></i>Registrar ingreso desde Lab · ${txt(item.name)}</h3>
       <div class="info-box" style="border-color:rgba(0,201,177,.3);color:#00C9B1">Disponible en laboratorio: <b>${stockLab} ${txt(item.unit)}</b></div>
-      <div class="field"><label>Cantidad recibida en La Paila</label><input id="m-qty" type="number" min="1" max="${stockLab}" value="1" autofocus></div>
+      <div class="field"><label>Cantidad recibida en Microbiología</label><input id="m-qty" type="number" min="1" max="${stockLab}" value="1" autofocus></div>
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="closeM()">Cancelar</button>
         <button class="btn btn-accent btn-sm" onclick="window.doLabToPailaDirecto('${item.id}',${stockLab},${stockP},'${txt(item.unit)}','${txt(item.name)}')"><i class="ti ti-check"></i> Confirmar ingreso</button>
@@ -1083,7 +1083,7 @@ window.openM=(type,...args)=>{
     // Límite alcanzado
     const usos=item.pailaUsoItems||[];
     area.innerHTML=`<div class="modal-bg"><div class="modal">
-      <h3 style="color:#F5A623">¿Estás seguro de que revisaste bien? (Paila)</h3>
+      <h3 style="color:#F5A623">¿Estás seguro de que revisaste bien? (Microbiología)</h3>
       <div class="danger-box">Límite alcanzado para <b>${txt(item.cat)}</b> (${usos.length}/${lim}). Debes retirar al menos uno.</div>
       <div class="card"><div class="card-body">
         ${usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1}</div><div class="item-sub">Desde: ${u.since}</div></div>
@@ -1114,11 +1114,11 @@ window.openM=(type,...args)=>{
     $('modal-area').innerHTML=`<div class="modal-bg"><div class="modal">
       <h3><i class="ti ti-file-text" style="color:#FFB347"></i>¿Agregar a remisiones?</h3>
       <div class="info-box" style="color:#FFB347;border-color:rgba(255,179,71,.3)">
-        <b style="color:#E8F4F2">${txt(d.name)}</b> · ${d.qty} ${txt(d.unit)} → La Paila
+        <b style="color:#E8F4F2">${txt(d.name)}</b> · ${d.qty} ${txt(d.unit)} → Microbiología
       </div>
-      <p style="color:#7A9BB5;font-size:12px;margin-bottom:4px">Este traslado se registrará como <b style="color:#E8F4F2">traslado permanente al laboratorio de microbiología del Centro de Salud de La Paila</b>.</p>
+      <p style="color:#7A9BB5;font-size:12px;margin-bottom:4px">Este traslado se registrará como <b style="color:#E8F4F2">traslado permanente al Laboratorio de Microbiología</b>.</p>
       <div class="modal-actions" style="flex-direction:column;gap:7px">
-        <button class="btn btn-sm" style="width:100%;justify-content:center;background:#FFB347;color:#1a0800" onclick="window.agregarACarritoRemision({...${JSON.stringify(d).replace(/"/g,'&quot;')},dest:'Laboratorio de Microbiología - C.S. La Paila',tipo:'traslado_paila'});closeM()">
+        <button class="btn btn-sm" style="width:100%;justify-content:center;background:#FFB347;color:#1a0800" onclick="window.agregarACarritoRemision({...${JSON.stringify(d).replace(/"/g,'&quot;')},dest:'Laboratorio de Microbiología',tipo:'traslado_paila'});closeM()">
           <i class="ti ti-plus"></i> Sí, agregar a remisiones
         </button>
         <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="closeM()">No, solo traslado</button>
@@ -1127,9 +1127,9 @@ window.openM=(type,...args)=>{
 
   } else if(type==='confirmarRemision'){
     const esPaila=carritoRemision.some(ci=>ci.tipo==='traslado_paila');
-    const destDefault=esPaila?'Laboratorio de Microbiología - C.S. La Paila':'';
+    const destDefault=esPaila?'Laboratorio de Microbiología':'';
     const itemsPreview=carritoRemision.map(ci=>`<div style="padding:4px 0;border-bottom:1px solid rgba(46,69,96,.3);font-size:12px;color:#E8F4F2">${ci.qty} ${ci.unit} · ${txt(ci.name)} → ${txt(ci.dest)}</div>`).join('');
-    area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal"><h3><i class="ti ti-file-text" style="color:#64B5F6"></i>Confirmar remisión</h3><div style="max-height:150px;overflow-y:auto;margin-bottom:10px">${itemsPreview}</div>${!esPaila?`<div class="field"><label>Servicio destinatario</label><select id="m-rem-dest"><option value="">Seleccionar...</option>${(cfg.services||[]).map(s=>`<option>${s}</option>`).join('')}</select></div>`:`<div class="info-box" style="color:#FFB347;border-color:rgba(255,179,71,.3)">Destino: <b>Laboratorio de Microbiología - C.S. La Paila</b></div>`}<div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-sm" style="background:#64B5F6;color:#0F1923" onclick="window.doConfirmarRemision('${esPaila?"traslado_paila":"salida"}',${esPaila?`'${destDefault}'`:`document.getElementById('m-rem-dest')?.value||'Sin especificar'`})"><i class="ti ti-printer"></i> Generar e imprimir</button></div></div></div>`;
+    area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal"><h3><i class="ti ti-file-text" style="color:#64B5F6"></i>Confirmar remisión</h3><div style="max-height:150px;overflow-y:auto;margin-bottom:10px">${itemsPreview}</div>${!esPaila?`<div class="field"><label>Servicio destinatario</label><select id="m-rem-dest"><option value="">Seleccionar...</option>${(cfg.services||[]).map(s=>`<option>${s}</option>`).join('')}</select></div>`:`<div class="info-box" style="color:#FFB347;border-color:rgba(255,179,71,.3)">Destino: <b>Laboratorio de Microbiología</b></div>`}<div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-sm" style="background:#64B5F6;color:#0F1923" onclick="window.doConfirmarRemision('${esPaila?"traslado_paila":"salida"}',${esPaila?`'${destDefault}'`:`document.getElementById('m-rem-dest')?.value||'Sin especificar'`})"><i class="ti ti-printer"></i> Generar e imprimir</button></div></div></div>`;
 
   } else if(type==='remManualTipo'){
     if(!manualRem) manualRem={tipo:'',destinoLibre:'',items:[]};
@@ -1142,7 +1142,7 @@ window.openM=(type,...args)=>{
           <option value="traslado">Traslado permanente</option>
         </select>
       </div>
-      <div class="field"><label>¿Para dónde es? (servicio, dependencia, institución...)</label><input id="m-rem-destlibre" placeholder="Ej: Urgencias, Centro de Salud La Paila, etc." autofocus></div>
+      <div class="field"><label>¿Para dónde es? (servicio, dependencia, institución...)</label><input id="m-rem-destlibre" placeholder="Ej: Urgencias, Microbiología, etc." autofocus></div>
       <div class="modal-actions"><button class="btn btn-ghost" onclick="window.cancelarRemManual()">Cancelar</button><button class="btn btn-sm" style="background:#64B5F6;color:#0F1923" onclick="window.remManualSetTipo(document.getElementById('m-rem-tipo-manual').value)"><i class="ti ti-arrow-right"></i> Siguiente: agregar insumos</button></div>
     </div></div>`;
 
@@ -1152,7 +1152,7 @@ window.openM=(type,...args)=>{
     const listH=manualRem.items.length?manualRem.items.map((ri,idx)=>`
       <div class="row">
         <div style="flex:1;min-width:0"><div class="item-name">${txt(ri.name)}</div>
-        <div class="item-sub">${ri.qty} ${txt(ri.unit)} · ${txt(ri.cat||'')} · ${ri.fuente==='aparte'?'<span style="color:#7A9BB5">Adición aparte (no descuenta stock)</span>':`<span style="color:#00C9B1">Descuenta de ${ri.fuente==='almacen'?'Almacén':ri.fuente==='lab'?'Laboratorio':'La Paila'}</span>`}</div></div>
+        <div class="item-sub">${ri.qty} ${txt(ri.unit)} · ${txt(ri.cat||'')} · ${ri.fuente==='aparte'?'<span style="color:#7A9BB5">Adición aparte (no descuenta stock)</span>':`<span style="color:#00C9B1">Descuenta de ${ri.fuente==='almacen'?'Almacén':ri.fuente==='lab'?'Laboratorio':'Microbiología'}</span>`}</div></div>
         <button class="btn btn-ghost btn-sm" onclick="window.remManualQuitar(${idx})"><i class="ti ti-x"></i></button>
       </div>`).join('') : `<div class="empty" style="padding:14px"><span style="font-size:12px;color:#7A9BB5">Aún no has agregado insumos.</span></div>`;
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)window.cancelarRemManual()"><div class="modal" style="max-width:480px">
@@ -1387,7 +1387,7 @@ function doPonerEnUsoPaila(item){
   if(!item||(item.paila||0)<=0){alert('Sin stock en La Paila');return;}
   const uid=genId();
   updateDoc(doc(db,'items',item.id),{pailaUsoItems:[...(item.pailaUsoItems||[]),{id:uid,name:item.name,since:ts()}],paila:(item.paila||0)-1})
-    .then(()=>addLog('uso',`En uso (Paila): ${item.name}`,`1 ${item.unit}`));
+    .then(()=>addLog('uso',`En uso (Micro): ${item.name}`,`1 ${item.unit}`));
   closeM();
 }
 window._ponerEnUsoPailaById=(itemId)=>{
@@ -1398,19 +1398,19 @@ window.retirarUsoPaila=async(itemId,usoId)=>{
   const item=items.find(i=>i.id===itemId); if(!item) return;
   const u=item.pailaUsoItems?.find(x=>x.id===usoId); if(!u) return;
   await updateDoc(doc(db,'items',itemId),{pailaUsoItems:item.pailaUsoItems.filter(x=>x.id!==usoId)});
-  await addLog('retiro',`Retirado de uso (Paila): ${item.name}`,`Desde ${u.since}`);
+  await addLog('retiro',`Retirado de uso (Micro): ${item.name}`,`Desde ${u.since}`);
 };
 window.doReemplazarUsoPaila=(itemId,usoId)=>{
   const item=items.find(i=>i.id===itemId); if(!item||(item.paila||0)<=0){closeM();alert('Sin stock en Paila');return;}
   const uid=genId();
   updateDoc(doc(db,'items',itemId),{pailaUsoItems:[...(item.pailaUsoItems||[]).filter(x=>x.id!==usoId),{id:uid,name:item.name,since:ts()}],paila:(item.paila||0)-1})
-    .then(()=>addLog('uso',`En uso (Paila): ${item.name}`,`Reemplazó uno anterior`));
+    .then(()=>addLog('uso',`En uso (Micro): ${item.name}`,`Reemplazó uno anterior`));
   closeM();
 };
 window.doRetirarTodosYUsarPaila=(itemId)=>{
   const item=items.find(i=>i.id===itemId); if(!item||(item.paila||0)<=0){closeM();alert('Sin stock en Paila');return;}
   updateDoc(doc(db,'items',itemId),{pailaUsoItems:[{id:genId(),name:item.name,since:ts()}],paila:(item.paila||0)-1})
-    .then(()=>addLog('uso',`En uso (Paila): ${item.name}`,`Retiró todos los anteriores`));
+    .then(()=>addLog('uso',`En uso (Micro): ${item.name}`,`Retiró todos los anteriores`));
   closeM();
 };
 
@@ -1518,17 +1518,17 @@ window.doIngreso=async(id,from,prevA,prevL,unit,name,prevP=0)=>{
   } else if(from==='paila'&&origen==='almacen'){
     if(prevA<qty){alert(`Solo hay ${prevA} ${unit} en almacén`);return;}
     await updateDoc(doc(db,'items',id),{almacen:prevA-qty,paila:prevP+qty});
-    await addLog('ingreso',`Ingreso a La Paila desde almacén: ${name}`,`${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso a Microbiología desde almacén: ${name}`,`${qty} ${unit}`);
   } else if(from==='paila'&&origen==='farmacia'){
     await updateDoc(doc(db,'items',id),{paila:prevP+qty});
-    await addLog('ingreso',`Ingreso a La Paila desde farmacia: ${name}`,`+${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso a Microbiología desde farmacia: ${name}`,`+${qty} ${unit}`);
   } else if(from==='paila'&&origen==='lab'){
     if(prevL<qty){alert(`Solo hay ${prevL} ${unit} en laboratorio`);return;}
     await updateDoc(doc(db,'items',id),{lab:prevL-qty,paila:prevP+qty});
-    await addLog('ingreso',`Ingreso a La Paila desde laboratorio: ${name}`,`${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso a Microbiología desde laboratorio: ${name}`,`${qty} ${unit}`);
   } else if(from==='paila'){
     await updateDoc(doc(db,'items',id),{paila:prevP+qty});
-    await addLog('ingreso',`Ingreso a La Paila (casa comercial): ${name}`,`+${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso a Microbiología (casa comercial): ${name}`,`+${qty} ${unit}`);
   } else {
     await updateDoc(doc(db,'items',id),{almacen:prevA+qty});
     await addLog('ingreso',`Ingreso al almacén: ${name}`,`+${qty} ${unit}`);
@@ -1572,9 +1572,9 @@ window.doLabToPaila=async(id,prevL,prevP,unit,name)=>{
   // Restar del lab inmediatamente, pero NO sumar a paila — queda en tránsito
   await updateDoc(doc(db,'items',id),{lab:prevL-qty});
   await addDoc(collection(db,'enCamino'),{itemId:id,name,qty,unit,desde:ts(),createdAt:serverTimestamp()});
-  await addLog('transfer',`${name}: laboratorio → En camino a La Paila`,`${qty} ${unit}`);
+  await addLog('transfer',`${name}: laboratorio → En camino a Microbiología`,`${qty} ${unit}`);
   closeM();
-  // Preguntar si agrega a remisiones (traslado permanente a La Paila)
+  // Preguntar si agrega a remisiones (traslado permanente a Microbiología)
   const itm=items.find(i=>i.id===id);
   openM('preguntarRemisionPaila',id,{qty,unit,name,cat:itm?.cat||''});
 };
@@ -1584,7 +1584,7 @@ window.doLabToPailaDirecto=async(id,prevL,prevP,unit,name)=>{
   if(qty<=0||qty>prevL){alert('Cantidad no válida');return;}
   // Suma directo al stock de la paila (ya está físicamente allá)
   await updateDoc(doc(db,'items',id),{lab:prevL-qty,paila:prevP+qty});
-  await addLog('transfer',`${name}: laboratorio → La Paila (ingreso directo)`,`${qty} ${unit}`);
+  await addLog('transfer',`${name}: laboratorio → Microbiología (ingreso directo)`,`${qty} ${unit}`);
   closeM();
   const itm=items.find(i=>i.id===id);
   openM('preguntarRemisionPaila',id,{qty,unit,name,cat:itm?.cat||''});
@@ -1593,7 +1593,7 @@ window._abrirConfirmFullPaila=(id)=>{
   const item=items.find(i=>i.id===id); if(!item) return;
   const usos=item.pailaUsoItems||[];
   $('modal-area').innerHTML=`<div class="modal-bg"><div class="modal">
-    <h3 style="color:#F5A623">¿Estás seguro de que revisaste bien? (Paila)</h3>
+    <h3 style="color:#F5A623">¿Estás seguro de que revisaste bien? (Microbiología)</h3>
     <div class="danger-box">Límite alcanzado (${usos.length}/${maxUso(item.cat)}). Elige cuál retirar:</div>
     <div class="card"><div class="card-body">
       ${usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1}</div><div class="item-sub">Desde: ${u.since}</div></div>
@@ -1609,7 +1609,7 @@ window.doConfirmarRecepcionPaila=async(enCaminoId)=>{
   const it=items.find(i=>i.id===ec.itemId); if(!it) return;
   await updateDoc(doc(db,'items',ec.itemId),{paila:(it.paila||0)+ec.qty});
   await deleteDoc(doc(db,'enCamino',enCaminoId));
-  await addLog('transfer',`${ec.name}: confirmada recepción en La Paila`,`${ec.qty} ${ec.unit}`);
+  await addLog('transfer',`${ec.name}: confirmada recepción en Microbiología`,`${ec.qty} ${ec.unit}`);
 };
 
 window.doRechazarEnCamino=async(enCaminoId)=>{
@@ -1618,7 +1618,7 @@ window.doRechazarEnCamino=async(enCaminoId)=>{
   const it=items.find(i=>i.id===ec.itemId); if(!it) return;
   await updateDoc(doc(db,'items',ec.itemId),{lab:(it.lab||0)+ec.qty});
   await deleteDoc(doc(db,'enCamino',enCaminoId));
-  await addLog('transfer',`${ec.name}: devuelto al laboratorio (no recibido en Paila)`,`${ec.qty} ${ec.unit}`);
+  await addLog('transfer',`${ec.name}: devuelto al laboratorio (no recibido en Micro)`,`${ec.qty} ${ec.unit}`);
 };
 
 // ── BORRADO LOGS ──────────────────────────────────────────────────────────────
@@ -1692,7 +1692,7 @@ window.remManualAgregar=(itemId)=>{
     const it=items.find(x=>x.id===itemId); if(!it) return;
     if(fuente!=='aparte'){
       const disp=fuente==='almacen'?it.almacen:fuente==='lab'?it.lab:(it.paila||0);
-      if(qty>disp){alert(`Solo hay ${disp} ${it.unit} disponibles en ${fuente==='almacen'?'almacén':fuente==='lab'?'laboratorio':'La Paila'}`);return;}
+      if(qty>disp){alert(`Solo hay ${disp} ${it.unit} disponibles en ${fuente==='almacen'?'almacén':fuente==='lab'?'laboratorio':'Microbiología'}`);return;}
     }
     manualRem.items.push({name:it.name,qty,unit:it.unit,cat:it.cat,fuente,itemId});
   }
@@ -1759,7 +1759,7 @@ function renderRemisiones(){
     h+=`<div class="empty"><i class="ti ti-archive"></i><span>No hay remisiones aún</span></div>`;
   } else {
     remisiones.forEach(r=>{
-      const tipoLbl={prestamo:'Préstamo',devolucion:'Devolución',traslado:'Traslado permanente',traslado_paila:'Traslado a La Paila',salida:'Salida a servicio'}[r.tipo]||r.tipo;
+      const tipoLbl={prestamo:'Préstamo',devolucion:'Devolución',traslado:'Traslado permanente',traslado_paila:'Traslado a Microbiología',salida:'Salida a servicio'}[r.tipo]||r.tipo;
       h+=`<div class="pedido-card" onclick="window.imprimirRemision('${r.id}')">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
           <div style="font-weight:600;color:#E8F4F2;font-size:13px"><i class="ti ti-file-text" style="margin-right:4px;color:#64B5F6"></i>${txt(r.fecha||'Sin fecha')}</div>
@@ -1844,7 +1844,7 @@ function generarImpresionRemision(r){
     <div class="tipo-row">
       <div class="tipo-item"><span class="checkbox" style="background:#000"></span> Traslado permanente</div>
     </div>
-    <p style="font-size:12px;margin:4px 0">Desde el Laboratorio Clínico del Hospital Departamental San Rafael de Zarzal hacia el <b>Laboratorio de Microbiología del Centro de Salud de La Paila</b>.</p>
+    <p style="font-size:12px;margin:4px 0">Desde el Laboratorio Clínico del Hospital Departamental San Rafael de Zarzal hacia el <b>Laboratorio de Microbiología</b>.</p>
     `:esManual?`
     <div class="tipo-row">
       <div class="tipo-item"><span class="checkbox" ${r.tipo==='prestamo'?'style="background:#000"':''}></span> Préstamo</div>
@@ -2062,7 +2062,7 @@ function renderSalidas(){
     ${ST.adminUnlocked?`<button class="btn btn-danger btn-sm" onclick="if(confirm('¿Eliminar TODAS las salidas?'))window.doVaciarSalidas()"><i class="ti ti-trash"></i> Vaciar</button>`:`<button class="btn btn-ghost btn-sm" onclick="window.requireAdmin(()=>{ST.adminUnlocked=true;render();})"><i class="ti ti-lock"></i> Gestionar</button>`}
   </div>`;
   if(!salidas.length){
-    h+=`<div class="empty"><i class="ti ti-door-exit"></i><span style="color:#7A9BB5">No hay salidas registradas aún.<br><span style="font-size:11px">Las salidas se registran al dar salida desde Almacén, Lab o La Paila.</span></span></div>`;
+    h+=`<div class="empty"><i class="ti ti-door-exit"></i><span style="color:#7A9BB5">No hay salidas registradas aún.<br><span style="font-size:11px">Las salidas se registran al dar salida desde Almacén, Lab o Microbiología.</span></span></div>`;
     return h;
   }
   h+=`<div class="card"><div class="card-body">`;
