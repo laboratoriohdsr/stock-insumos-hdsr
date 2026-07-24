@@ -191,7 +191,7 @@ html,body{background:#0F1923;color:#E8F4F2;font-family:system-ui,-apple-system,s
     <button class="tab active" onclick="window.setTab('total',this)"><i class="ti ti-stack" style="margin-right:3px"></i>Total</button>
     <button class="tab" onclick="window.setTab('almacen',this)"><i class="ti ti-building-warehouse" style="margin-right:3px"></i>Almacén</button>
     <button class="tab" onclick="window.setTab('lab',this)"><i class="ti ti-flask" style="margin-right:3px"></i>Laboratorio</button>
-    <button class="tab" onclick="window.setTab('paila',this)" style="color:#E8F4F2"><i class="ti ti-circle" style="margin-right:3px;color:#FFB347"></i>La Paila</button>
+    <button class="tab" onclick="window.setTab('paila',this)"><i class="ti ti-microscope" style="margin-right:3px"></i>Microbiología</button>
     <button class="tab" onclick="window.setTab('uso',this)"><i class="ti ti-activity" style="margin-right:3px"></i>En uso</button>
     <button class="tab" onclick="window.setTab('log',this)"><i class="ti ti-history" style="margin-right:3px"></i>Movimientos</button>
     <button class="tab" onclick="window.setTab('pedidos',this)" style="color:#A78BFA"><i class="ti ti-shopping-cart" style="margin-right:3px"></i>Pedidos</button>
@@ -559,13 +559,13 @@ function listLab(){
         ${eu>0?`<br><span class="badge b-uso" style="display:inline-flex;margin-top:3px">En uso: ${eu}</span>`:''}
       </div>`;
     }
-    h+=`<div class="row row-clickable" onclick="window.openItemDetail('${item.id}')">
-      <div style="flex:1;min-width:0">
+    h+=`<div class="row row-clickable" style="flex-wrap:wrap;align-items:flex-start" onclick="window.openItemDetail('${item.id}')">
+      <div style="flex:1;min-width:130px">
         <div class="item-name">${txt(item.name)}</div>
         <div class="item-sub">${txt(item.cat)} · ${item.unit} · ${item.almacen>0?`<span style="color:#7A9BB5">Almacén: <b style="color:#E8F4F2">${item.almacen}</b></span>`:`<span style="color:#E8484A;font-size:10px">Sin almacén</span>`}</div>
       </div>
       ${stockBadge}
-      <div style="display:flex;gap:3px;flex-shrink:0;flex-wrap:wrap" onclick="event.stopPropagation()">
+      <div style="display:flex;gap:3px;flex-shrink:0;flex-wrap:wrap;margin-top:2px" onclick="event.stopPropagation()">
         <button class="btn btn-green btn-sm" onclick="window.openM('ingreso','${item.id}','lab')"><i class="ti ti-plus"></i> Ingreso</button>
         ${!labAgotado?`<button class="btn btn-warn btn-sm" onclick="window.openM('usar','${item.id}')"><i class="ti ti-player-play"></i> Usar</button>`:''}
         ${!labAgotado?`<button class="btn btn-danger btn-sm" onclick="window.openM('salida','${item.id}','lab')"><i class="ti ti-door-exit"></i></button>`:''}
@@ -651,13 +651,13 @@ function listPaila(){
         ${qtyCamino>0?`<br><span style="display:inline-flex;margin-top:3px;padding:2px 6px;border-radius:20px;font-size:10px;background:rgba(124,92,191,.18);color:#A78BFA"><i class="ti ti-truck" style="font-size:9px;margin-right:3px"></i>${qtyCamino} en camino</span>`:''}
       </div>`;
     }
-    h+=`<div class="row row-clickable" onclick="window.openItemDetail('${item.id}')">
-      <div style="flex:1;min-width:0">
+    h+=`<div class="row row-clickable" style="flex-wrap:wrap;align-items:flex-start" onclick="window.openItemDetail('${item.id}')">
+      <div style="flex:1;min-width:130px">
         <div class="item-name">${txt(item.name)}</div>
         <div class="item-sub">${txt(item.cat)} · ${item.unit} · ${stockLab>0?`<span style="color:#7A9BB5">Lab: <b style="color:#00C9B1">${stockLab}</b></span>`:`<span style="color:#5B9BD5;font-size:10px">Sin stock en lab</span>`}</div>
       </div>
       ${stockBadge}
-      <div style="display:flex;gap:3px;flex-shrink:0;flex-wrap:wrap" onclick="event.stopPropagation()">
+      <div style="display:flex;gap:3px;flex-shrink:0;flex-wrap:wrap;margin-top:2px" onclick="event.stopPropagation()">
         <button class="btn btn-green btn-sm" onclick="window.openM('ingreso','${item.id}','paila')"><i class="ti ti-plus"></i> Ingreso</button>
         ${stockLab>0?`<button class="btn btn-accent btn-sm" onclick="window.openM('labToPailaDirecto','${item.id}')" title="Pasar a Microbiología"><i class="ti ti-arrow-right"></i> Del Lab</button>`:''}
         ${!pailaAgotada?`<button class="btn btn-warn btn-sm" onclick="window.openM('usarPaila','${item.id}')"><i class="ti ti-player-play"></i> Usar</button>`:''}
