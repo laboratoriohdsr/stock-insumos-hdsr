@@ -27,10 +27,11 @@ html,body{background:#0F1923;color:#E8F4F2;font-family:system-ui,-apple-system,s
 .topbar{background:#1C2B3A;border-bottom:1px solid #2E4560;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;position:sticky;top:0;z-index:20;flex-wrap:wrap}
 .topbar-left{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
 .topbar-title{font-size:13px;font-weight:700;color:#00C9B1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:480px){.topbar-title{display:none}}
 .conn-pill{display:flex;align-items:center;gap:4px;font-size:10px;color:#7A9BB5;background:#0F1923;border:1px solid #2E4560;border-radius:20px;padding:2px 7px;white-space:nowrap;flex-shrink:0}
 .conn-dot{width:6px;height:6px;border-radius:50%;background:#E8484A;transition:background .4s;flex-shrink:0}
 .conn-dot.ok{background:#4CAF7D}
-.topbar-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.topbar-right{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .lock-btn{display:flex;align-items:center;gap:5px;background:#243447;border:1px solid #2E4560;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;color:#E8F4F2;transition:border-color .2s;border:none}
 .lock-btn.locked{border:1px solid #E8484A;color:#E8484A}
 .lock-btn.unlocked{border:1px solid #4CAF7D;color:#4CAF7D}
