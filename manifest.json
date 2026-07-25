@@ -1,12 +1,12 @@
 {
-  "name": "Stock Insumos HDSR",
-  "short_name": "HDSR Lab",
+  "name": "Stock de Insumos",
+  "short_name": "Stock de Insumos",
   "description": "Inventario de insumos - Laboratorio Hospital San Rafael de Zarzal",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0F1923",
   "theme_color": "#0F1923",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "icons": [
     {
       "src": "icon-192.png",
