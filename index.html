@@ -229,6 +229,7 @@ html,body{background:#0F1923;color:#E8F4F2;font-family:system-ui,-apple-system,s
           <button class="user-menu-item" onclick="window.closeUserMenu();window.openUserModal('units')"><i class="ti ti-ruler"></i>Configurar unidades</button>
           <button class="user-menu-item" onclick="window.closeUserMenu();window.openUserModal('services')"><i class="ti ti-building-hospital"></i>Configurar servicios</button>
           <button class="user-menu-item" onclick="window.closeUserMenu();window.openUserModal('remisionSvcs')"><i class="ti ti-file-text" style="color:#64B5F6"></i>Servicios que piden remisión</button>
+          <button class="user-menu-item" onclick="window.closeUserMenu();window.openUserModal('usoSvcs')"><i class="ti ti-chart-bar" style="color:#00C9B1"></i>Servicios que cuentan como uso</button>
           <button class="user-menu-item" onclick="window.closeUserMenu();window.openUserModal('usoLimits')"><i class="ti ti-settings"></i>Límites de uso por categoría</button>
           <div class="user-menu-sep"></div>
           <button class="user-menu-item" onclick="window.closeUserMenu();window.setTabDirect('papelera')"><i class="ti ti-trash" style="color:#E8484A"></i>Papelera</button>
@@ -295,6 +296,7 @@ let cfg={
   units:['Caja','Botella','Unidad','Paquete','Frasco','Tubo'],
   services:['Urgencias','UCI','Hospitalización','Cirugía','Pediatría','Ginecología','Consulta externa'],
   remisionServices:[], // servicios que activan pregunta de remisión
+  usoServices:[],      // servicios cuyas salidas cuentan como consumo/uso en pedidos
   usoLimits:{}
 };
 
@@ -870,38 +872,37 @@ function renderPedidos(){
 
   const hoy=new Date(), mkA=mk(hoy), mkP=mk(new Date(hoy.getFullYear(),hoy.getMonth()-1,1));
   const remSvcs=cfg.remisionServices||[];
+  const usoSvcs=cfg.usoServices||[];
   const cRef={};
 
-  // Consumo desde logs (uso + salidas internas — excluye lo que va a servicios de remisión)
+  // Consumo desde logs: uso siempre cuenta; salidas solo si el destino está en usoServices
   logs.forEach(e=>{
-    if(e.type==='salida'||e.type==='uso'){
-      let m=''; try{const p=e.time.split(', ')[0].split('/');if(p.length===3)m=`${p[2]}-${p[1].padStart(2,'0')}`;}catch{}
-      if(m!==mkA&&m!==mkP) return;
-      // Para salidas, excluir si el destino es un servicio que pide remisión
-      if(e.type==='salida'){
-        const destMatch=(e.detail||'').match(/→\s*(.+?)\s*\(/);
-        const dest=destMatch?destMatch[1].trim():'';
-        if(remSvcs.some(s=>dest.toLowerCase().includes(s.toLowerCase()))) return;
-      }
-      const name=(e.text.match(/^(?:Salida|En uso): (.+)$/)||[])[1]||e.text;
-      const qty=parseInt((e.detail||'').match(/^(\d+)/)?.[1]||'1');
-      if(!cRef[name])cRef[name]={a:0,p:0};
-      if(m===mkA)cRef[name].a+=qty; else cRef[name].p+=qty;
-    }
-  });
-  // También sumar desde colección salidas (más precisa que logs)
-  salidas.forEach(e=>{
-    if(!e.fecha) return;
-    let m=''; try{const p=e.fecha.split('/');if(p.length===3)m=`${p[2]}-${p[1].padStart(2,'0')}`;}catch{}
-    // fecha en formato "dd de mes de yyyy" — intenta con createdAt seconds
-    if(!m&&e.createdAt?.seconds){
-      const d=new Date(e.createdAt.seconds*1000);
-      m=mk(d);
-    }
+    if(e.type!=='salida'&&e.type!=='uso') return;
+    let m=''; try{const p=e.time.split(', ')[0].split('/');if(p.length===3)m=`${p[2]}-${p[1].padStart(2,'0')}`;}catch{}
     if(m!==mkA&&m!==mkP) return;
-    if(remSvcs.some(s=>(e.dest||'').toLowerCase().includes(s.toLowerCase()))) return;
-    const name=e.name||'';
-    if(!name) return;
+    if(e.type==='salida'){
+      const destMatch=(e.detail||'').match(/→\s*(.+?)\s*\(/);
+      const dest=destMatch?destMatch[1].trim():'';
+      // Solo cuenta si el servicio está en usoServices (si usoServices está vacío, cuenta todo lo que no sea remisión)
+      const esRemision=remSvcs.some(s=>dest.toLowerCase().includes(s.toLowerCase()));
+      if(esRemision) return;
+      if(usoSvcs.length>0&&!usoSvcs.some(s=>dest.toLowerCase().includes(s.toLowerCase()))) return;
+    }
+    const name=(e.text.match(/^(?:Salida|En uso): (.+)$/)||[])[1]||e.text;
+    const qty=parseInt((e.detail||'').match(/^(\d+)/)?.[1]||'1');
+    if(!cRef[name])cRef[name]={a:0,p:0};
+    if(m===mkA)cRef[name].a+=qty; else cRef[name].p+=qty;
+  });
+  // También desde colección salidas
+  salidas.forEach(e=>{
+    let m='';
+    if(e.createdAt?.seconds){ m=mk(new Date(e.createdAt.seconds*1000)); }
+    if(m!==mkA&&m!==mkP) return;
+    const dest=e.dest||'';
+    const esRemision=remSvcs.some(s=>dest.toLowerCase().includes(s.toLowerCase()));
+    if(esRemision) return;
+    if(usoSvcs.length>0&&!usoSvcs.some(s=>dest.toLowerCase().includes(s.toLowerCase()))) return;
+    const name=e.name||''; if(!name) return;
     if(!cRef[name])cRef[name]={a:0,p:0};
     if(m===mkA)cRef[name].a+=e.qty||0; else cRef[name].p+=e.qty||0;
   });
@@ -919,26 +920,25 @@ function renderPedidos(){
     listaPedido.forEach((item,i)=>{
       const r=cRef[item.name]||{};
       const stockTotal=(item.almacen||0)+(item.lab||0)+(item.paila||0);
-      h+=`<div class="row">
-        <div style="flex:1;min-width:0">
+      const savedQty=window._pedidoQtys?.[item.id]||(r.p||1);
+      h+=`<div class="row" style="flex-wrap:wrap;align-items:flex-start">
+        <div style="flex:1;min-width:130px">
           <div class="item-name">${txt(item.name)}</div>
           <div class="item-sub">
-            Stock: <b style="color:#00C9B1">${stockTotal} ${txt(item.unit)}</b>
-            ${r.p?` · Mes pasado: <span style="color:#7A9BB5">${r.p}</span>`:''}
-            ${r.a?` · Este mes: <span style="color:#F5A623">${r.a}</span>`:''}
+            Stock total: <b style="color:#00C9B1">${stockTotal} ${txt(item.unit)}</b>
+            (Alm: ${item.almacen||0} · Lab: ${item.lab||0} · Micro: ${item.paila||0})
+            ${r.p?`<br>Mes pasado: <span style="color:#7A9BB5">${r.p} ${txt(item.unit)}</span>`:''}
+            ${r.a?` · Este mes: <span style="color:#F5A623">${r.a} ${txt(item.unit)}</span>`:''}
           </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
             <span style="font-size:11px;color:#7A9BB5">Pedir:</span>
-            <input type="number" min="1" value="${r.p||1}" id="pqty_${i}" data-item-id="${item.id}"
+            <input type="number" min="1" value="${savedQty}" id="pqty_${item.id}"
+              oninput="if(!window._pedidoQtys)window._pedidoQtys={};window._pedidoQtys['${item.id}']=parseInt(this.value)||1"
               style="width:65px;background:#0F1923;border:1px solid #2E4560;border-radius:5px;padding:4px 6px;color:#E8F4F2;-webkit-text-fill-color:#E8F4F2;font-size:12px;outline:none">
             <span style="font-size:11px;color:#7A9BB5">${txt(item.unit)}</span>
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
-              <input type="checkbox" id="pya_${i}" style="width:14px;height:14px;accent-color:#4CAF7D;cursor:pointer">
-              <span style="font-size:11px;color:#7A9BB5">Ya llegó antes</span>
-            </label>
           </div>
         </div>
-        <button class="btn btn-danger btn-sm" style="flex-shrink:0;align-self:flex-start;margin-top:2px" onclick="window.quitarDeLista('${item.id}')"><i class="ti ti-x"></i></button>
+        <button class="btn btn-danger btn-sm" style="flex-shrink:0;margin-top:2px" onclick="window.quitarDeLista('${item.id}')"><i class="ti ti-x"></i></button>
       </div>`;
     });
     h+=`</div></div>`;
@@ -1541,34 +1541,27 @@ window.quickPedir=async(id)=>{
   if(item._pedidoPendiente){ if(!confirm(`"${item.name}" ya está en la lista de pedido. ¿Deseas quitarlo?`)) return; await updateDoc(doc(db,'items',id),{_pedidoPendiente:false}); return; }
   if(confirm(`¿Agregar "${item.name}" a la lista de pedido?`)) await updateDoc(doc(db,'items',id),{_pedidoPendiente:true});
 };
-window.quitarDeLista=async(id)=>{ await updateDoc(doc(db,'items',id),{_pedidoPendiente:false}); };
+window.quitarDeLista=async(id)=>{ if(window._pedidoQtys) delete window._pedidoQtys[id]; await updateDoc(doc(db,'items',id),{_pedidoPendiente:false}); };
 window.confirmarPedidoInline=()=>{
   const lista=items.filter(i=>i._pedidoPendiente);
   if(!lista.length) return;
-  // Build summary for confirmation
-  const resumen=lista.map((item,i)=>{
-    const qty=parseInt(document.getElementById(`pqty_${i}`)?.value)||1;
-    const ya=document.getElementById(`pya_${i}`)?.checked===true;
-    return `${txt(item.name)}: ${qty} ${txt(item.unit)}${ya?' ✓':''}`;
+  const resumen=lista.map(item=>{
+    const qty=window._pedidoQtys?.[item.id]||parseInt(document.getElementById(`pqty_${item.id}`)?.value)||1;
+    return `• ${txt(item.name)}: ${qty} ${txt(item.unit)}`;
   }).join('\n');
-  if(!confirm(`¿Confirmar pedido con estos insumos?\n\n${resumen}\n\n(✓ = ya llegó antes)`)) return;
-  window.doHacerPedido(lista.length);
+  if(!confirm(`¿Confirmar pedido?\n\n${resumen}`)) return;
+  window.doHacerPedido();
 };
 
-window.doHacerPedido=async(len)=>{
+window.doHacerPedido=async()=>{
   const lista=items.filter(i=>i._pedidoPendiente);
-  const pedidoItems=lista.map((item,i)=>{
-    const yaLlego=document.getElementById(`pya_${i}`)?.checked===true;
-    return {
-      itemId:item.id,name:item.name,
-      qty:parseInt(document.getElementById(`pqty_${i}`)?.value)||1,
-      unit:item.unit,
-      auditado:yaLlego,
-      llegó:yaLlego?true:null,
-      auditadoEn:yaLlego?ts():null,
-      _yaLlegoAntes:yaLlego
-    };
-  });
+  const pedidoItems=lista.map(item=>({
+    itemId:item.id,name:item.name,
+    qty:window._pedidoQtys?.[item.id]||parseInt(document.getElementById(`pqty_${item.id}`)?.value)||1,
+    unit:item.unit,
+    auditado:false,llegó:null,auditadoEn:null
+  }));
+  window._pedidoQtys={};
   await addDoc(collection(db,'pedidos'),{fecha:tsDate(),items:pedidoItems,createdAt:serverTimestamp(),estado:'pendiente'});
   await addLog('pedido',`Pedido realizado`,`${pedidoItems.length} ítems · ${tsDate()}`);
   const batch=writeBatch(db);
@@ -2379,6 +2372,26 @@ window.openUserModal=(type)=>{
       </div></div>`;
     });
 
+  } else if(type==='usoSvcs'){
+    requireAdmin(()=>{
+      const listH=()=>(cfg.services||[]).map((s,i)=>{
+        const checked=(cfg.usoServices||[]).includes(s);
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(46,69,96,.35)">
+          <span style="font-size:13px;color:#E8F4F2">${txt(s)}</span>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <span style="font-size:11px;color:#7A9BB5">${checked?'Cuenta como uso':'No cuenta'}</span>
+            <input type="checkbox" id="usoSvc_${i}" ${checked?'checked':''} style="width:16px;height:16px;cursor:pointer;accent-color:#00C9B1" onchange="window.toggleUsoSvc('${s}',this.checked)">
+          </label>
+        </div>`;
+      }).join('');
+      area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
+        <h3><i class="ti ti-chart-bar" style="color:#00C9B1"></i>Servicios que cuentan como uso</h3>
+        <p style="color:#7A9BB5;font-size:12px;margin-bottom:10px">Las salidas a estos servicios se suman al consumo mensual en la sección de pedidos.</p>
+        <div id="usoSvcList">${listH()}</div>
+        <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cerrar</button></div>
+      </div></div>`;
+    });
+
   } else if(type==='usoLimits'){
     requireAdmin(()=>{
       const rows=cfg.cats.map(c=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(46,69,96,.4)">
@@ -2403,6 +2416,12 @@ window.toggleRemSvc=async(svc,checked)=>{
   if(!cfg.remisionServices) cfg.remisionServices=[];
   if(checked){ if(!cfg.remisionServices.includes(svc)) cfg.remisionServices.push(svc); }
   else{ cfg.remisionServices=cfg.remisionServices.filter(s=>s!==svc); }
+  await saveCfg();
+};
+window.toggleUsoSvc=async(svc,checked)=>{
+  if(!cfg.usoServices) cfg.usoServices=[];
+  if(checked){ if(!cfg.usoServices.includes(svc)) cfg.usoServices.push(svc); }
+  else{ cfg.usoServices=cfg.usoServices.filter(s=>s!==svc); }
   await saveCfg();
 };
 window.guardarLimites=async()=>{
