@@ -300,11 +300,11 @@ let cfg={
 
 // Reactive state — no rebuild DOM on every keystroke, use JS to filter
 let ST = {
-  tab:'total',
+  tab: localStorage.getItem('hdsr_lastTab')||'total',
   catFilter:'',
   searchQ:'',
   sortBy:'name',
-  statFilter:'',   // 'bajo' | 'agotado' | ''
+  statFilter:'',
   addLocked:true,
   adminUnlocked:false,
   pedidosUnlocked:false,
@@ -350,7 +350,11 @@ onSnapshot(collection(db,'items'), snap=>{
   clearTimeout(_loadingTimeout);
   items=snap.docs.map(d=>({id:d.id,...d.data()}));
   window._items=items;
-  setConn(true); if(ST.firstLoad){ST.firstLoad=false;hideLoading();} render();
+  setConn(true); if(ST.firstLoad){ST.firstLoad=false;hideLoading();
+    // Restore last tab active state on load
+    const map=['total','almacen','lab','paila','uso','log','pedidos','remisiones','salidas','reportes'];
+    document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',map[i]===ST.tab));
+  } render();
 }, err=>{
   clearTimeout(_loadingTimeout);
   setConn(false);
@@ -398,12 +402,14 @@ loadCfg();
 // ── NAVIGATION ───────────────────────────────────────────────────────────────
 window.setTab=(t,el)=>{
   ST.tab=t; ST.searchQ=''; ST.catFilter=''; ST.statFilter='';
+  localStorage.setItem('hdsr_lastTab',t);
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   if(el) el.classList.add('active');
   render();
 };
 window.setTabDirect=(t)=>{
   ST.tab=t; ST.searchQ=''; ST.catFilter=''; ST.statFilter='';
+  localStorage.setItem('hdsr_lastTab',t);
   const map=['total','almacen','lab','paila','uso','log','pedidos','remisiones','salidas','reportes'];
   document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',map[i]===t));
   render();
@@ -648,17 +654,20 @@ function renderPaila(){
   // Banner de ítems en camino (pendientes de confirmar recepción)
   let bannerCamino='';
   if(enCamino.length){
-    const filas=enCamino.map(ec=>`
+    const filas=enCamino.map(ec=>{
+      const itExiste=items.some(i=>i.id===ec.itemId);
+      return `
       <div class="row" style="padding:8px 4px;border-bottom:1px solid rgba(255,179,71,.2)">
         <div style="flex:1;min-width:0">
-          <div class="item-name"><i class="ti ti-package" style="color:#FFB347;margin-right:4px"></i>${txt(ec.name)}</div>
+          <div class="item-name"><i class="ti ti-package" style="color:#FFB347;margin-right:4px"></i>${txt(ec.name)}${!itExiste?` <span style="font-size:10px;color:#E8484A">(insumo eliminado)</span>`:''}</div>
           <div class="item-sub">${ec.qty} ${txt(ec.unit)} · Salió del lab: ${ec.desde||''}</div>
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0">
-          <button class="btn btn-green btn-sm" onclick="window.doConfirmarRecepcionPaila('${ec.id}')"><i class="ti ti-check"></i> Recibido</button>
-          <button class="btn btn-ghost btn-sm" onclick="window.doRechazarEnCamino('${ec.id}')" title="Devolver al lab"><i class="ti ti-arrow-back-up" style="color:#E8484A"></i></button>
+          <button class="btn btn-green btn-sm" onclick="window.doConfirmarRecepcionPaila('${ec.id}')"><i class="ti ti-check"></i> ${itExiste?'Recibido':'Eliminar'}</button>
+          ${itExiste?`<button class="btn btn-ghost btn-sm" onclick="window.doRechazarEnCamino('${ec.id}')" title="Cancelar tránsito"><i class="ti ti-arrow-back-up" style="color:#E8484A"></i></button>`:''}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     bannerCamino=`<div style="background:rgba(255,179,71,.08);border:1px solid rgba(255,179,71,.35);border-radius:8px;padding:10px 12px;margin-bottom:12px">
       <div style="font-size:12px;font-weight:600;color:#FFB347;margin-bottom:8px"><i class="ti ti-truck" style="margin-right:5px"></i>En camino a Microbiología · ${enCamino.length} pendiente${enCamino.length>1?'s':''} de confirmar recepción</div>
       ${filas}
@@ -1321,14 +1330,24 @@ window.openM=(type,...args)=>{
         if(m===mkA)cRef2[name].a+=qty; else cRef2[name].p+=qty;
       }
     });
-    const rows=lista.map((item,i)=>{ const r=cRef2[item.name]||{}; return `
+    const rows=lista.map((item,i)=>{ const r=cRef2[item.name]||{};
+      const stockTotal=(item.almacen||0)+(item.lab||0)+(item.paila||0);
+      return `
       <div style="padding:8px 0;border-bottom:1px solid rgba(46,69,96,.4)">
-        <div style="font-weight:500;color:#E8F4F2;font-size:13px;margin-bottom:3px">${txt(item.name)}</div>
-        <div style="font-size:11px;color:#7A9BB5;margin-bottom:6px">${r.p?`Mes pasado: <span style="color:#00C9B1">${r.p} ${txt(item.unit)}</span>  `:''}${r.a?`Este mes: <span style="color:#F5A623">${r.a} ${txt(item.unit)}</span>`:''}</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:11px;color:#7A9BB5">Cantidad a pedir:</span>
+        <div style="font-weight:500;color:#E8F4F2;font-size:13px;margin-bottom:2px">${txt(item.name)}</div>
+        <div style="font-size:11px;color:#7A9BB5;margin-bottom:4px">
+          Stock actual: <b style="color:#00C9B1">${stockTotal} ${txt(item.unit)}</b>
+          ${r.p?` · Mes pasado: <span style="color:#7A9BB5">${r.p}</span>`:''}
+          ${r.a?` · Este mes: <span style="color:#F5A623">${r.a}</span>`:''}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:11px;color:#7A9BB5">Pedir:</span>
           <input type="number" min="1" value="${r.p||1}" id="pqty_${i}" style="width:70px;background:#0F1923;border:1px solid #2E4560;border-radius:5px;padding:4px 7px;color:#E8F4F2;-webkit-text-fill-color:#E8F4F2;font-size:12px;outline:none">
           <span style="font-size:11px;color:#7A9BB5">${txt(item.unit)}</span>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin-left:6px">
+            <input type="checkbox" id="pya_${i}" style="width:14px;height:14px;accent-color:#4CAF7D;cursor:pointer">
+            <span style="font-size:11px;color:#7A9BB5">✓ Ya llegó antes</span>
+          </label>
         </div>
       </div>`; }).join('');
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
@@ -1485,7 +1504,18 @@ window.quickPedir=async(id)=>{
 window.quitarDeLista=async(id)=>{ await updateDoc(doc(db,'items',id),{_pedidoPendiente:false}); };
 window.doHacerPedido=async(len)=>{
   const lista=items.filter(i=>i._pedidoPendiente);
-  const pedidoItems=lista.map((item,i)=>({itemId:item.id,name:item.name,qty:parseInt(document.getElementById(`pqty_${i}`)?.value)||1,unit:item.unit,auditado:false,llegó:null,auditadoEn:null}));
+  const pedidoItems=lista.map((item,i)=>{
+    const yaLlego=document.getElementById(`pya_${i}`)?.checked===true;
+    return {
+      itemId:item.id,name:item.name,
+      qty:parseInt(document.getElementById(`pqty_${i}`)?.value)||1,
+      unit:item.unit,
+      auditado:yaLlego,
+      llegó:yaLlego?true:null,
+      auditadoEn:yaLlego?ts():null,
+      _yaLlegoAntes:yaLlego
+    };
+  });
   await addDoc(collection(db,'pedidos'),{fecha:tsDate(),items:pedidoItems,createdAt:serverTimestamp(),estado:'pendiente'});
   await addLog('pedido',`Pedido realizado`,`${pedidoItems.length} ítems · ${tsDate()}`);
   const batch=writeBatch(db);
@@ -1656,19 +1686,25 @@ window._abrirConfirmFullPaila=(id)=>{
 
 window.doConfirmarRecepcionPaila=async(enCaminoId)=>{
   const ec=enCamino.find(e=>e.id===enCaminoId); if(!ec) return;
-  const it=items.find(i=>i.id===ec.itemId); if(!it) return;
-  await updateDoc(doc(db,'items',ec.itemId),{paila:(it.paila||0)+ec.qty});
+  const it=items.find(i=>i.id===ec.itemId);
+  if(it){
+    await updateDoc(doc(db,'items',ec.itemId),{paila:(it.paila||0)+ec.qty});
+  }
+  // Si el insumo ya fue eliminado, solo borramos el registro en camino
   await deleteDoc(doc(db,'enCamino',enCaminoId));
-  await addLog('transfer',`${ec.name}: confirmada recepción en Microbiología`,`${ec.qty} ${ec.unit}`);
+  await addLog('transfer',`${ec.name}: confirmada recepción en Microbiología${!it?' (insumo eliminado del inventario)':''}`,`${ec.qty} ${ec.unit}`);
 };
 
 window.doRechazarEnCamino=async(enCaminoId)=>{
-  if(!confirm('¿Devolver este ítem al stock del laboratorio?')) return;
+  if(!confirm('¿Cancelar este tránsito y quitar el registro pendiente?')) return;
   const ec=enCamino.find(e=>e.id===enCaminoId); if(!ec) return;
-  const it=items.find(i=>i.id===ec.itemId); if(!it) return;
-  await updateDoc(doc(db,'items',ec.itemId),{lab:(it.lab||0)+ec.qty});
+  const it=items.find(i=>i.id===ec.itemId);
+  if(it){
+    await updateDoc(doc(db,'items',ec.itemId),{lab:(it.lab||0)+ec.qty});
+    await addLog('transfer',`${ec.name}: devuelto al laboratorio (no recibido en Micro)`,`${ec.qty} ${ec.unit}`);
+  }
+  // Si el insumo fue eliminado, solo borramos el registro
   await deleteDoc(doc(db,'enCamino',enCaminoId));
-  await addLog('transfer',`${ec.name}: devuelto al laboratorio (no recibido en Micro)`,`${ec.qty} ${ec.unit}`);
 };
 
 // ── BORRADO LOGS ──────────────────────────────────────────────────────────────
