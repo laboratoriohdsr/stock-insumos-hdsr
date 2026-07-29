@@ -317,6 +317,7 @@ let ST = {
 // ── UTILS ────────────────────────────────────────────────────────────────────
 const $  = id => document.getElementById(id);
 const txt = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 const ts  = () => new Date().toLocaleString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
 const tsDate = () => new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
 const mk  = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -474,7 +475,7 @@ function applyFilters(source){
   if(ST.catFilter)  r=r.filter(i=>i.cat===ST.catFilter);
   if(ST.statFilter==='bajo')    r=r.filter(i=>(i.almacen+i.lab)>0&&(i.almacen+i.lab)<=i.min);
   if(ST.statFilter==='agotado') r=r.filter(i=>!i.almacen&&!i.lab);
-  if(ST.searchQ){ const q=ST.searchQ.toLowerCase(); r=r.filter(i=>i.name.toLowerCase().includes(q)||i.cat.toLowerCase().includes(q)); }
+  if(ST.searchQ){ const q=norm(ST.searchQ); r=r.filter(i=>norm(i.name).includes(q)||norm(i.cat).includes(q)||norm(i.sinonimos).includes(q)); }
   if(ST.sortBy==='name')    r.sort((a,b)=>a.name.localeCompare(b.name,'es'));
   else if(ST.sortBy==='stock')   r.sort((a,b)=>(b.almacen+b.lab)-(a.almacen+a.lab));
   else if(ST.sortBy==='almacen') r.sort((a,b)=>b.almacen-a.almacen);
@@ -854,7 +855,7 @@ function listLog(){
   const COLORS={transfer:'#00C9B1',uso:'#F5A623',salida:'#E8484A',retiro:'#7A9BB5',nuevo:'#00C9B1',edit:'#7A9BB5',delete:'#E8484A',ingreso:'#4CAF7D',pedido:'#A78BFA'};
   const BGS={transfer:'rgba(0,201,177,.12)',uso:'rgba(245,166,35,.12)',salida:'rgba(232,72,74,.12)',retiro:'rgba(122,155,181,.1)',nuevo:'rgba(0,201,177,.12)',edit:'rgba(122,155,181,.1)',delete:'rgba(232,72,74,.12)',ingreso:'rgba(76,175,125,.12)',pedido:'rgba(167,139,250,.1)'};
   const q=ST.searchQ.toLowerCase();
-  const vis=q?logs.filter(e=>e.text?.toLowerCase().includes(q)||e.detail?.toLowerCase().includes(q)):logs;
+  const vis=q?logs.filter(e=>norm(e.text).includes(norm(q))||norm(e.detail).includes(norm(q))):logs;
   if(!vis.length) return `<div class="empty"><i class="ti ti-history"></i><span>Sin movimientos${q?' que coincidan':''}</span></div>`;
   let h=`<div class="card"><div class="card-body">`;
   vis.forEach(e=>{
@@ -989,7 +990,7 @@ function renderPedidos(){
 window.filtrarPedidoBusq = (q) => {
   const r=$('pedidoBusqResults'); if(!r) return;
   if(!q.trim()){r.innerHTML='';return;}
-  const found=items.filter(i=>i.name.toLowerCase().includes(q.toLowerCase())).slice(0,8);
+  const found=items.filter(i=>norm(i.name).includes(norm(q))||norm(i.sinonimos).includes(norm(q))).slice(0,8);
   if(!found.length){r.innerHTML=`<div style="color:#7A9BB5;font-size:12px;padding:6px 0">Sin resultados</div>`;return;}
   let h=`<div class="card"><div class="card-body">`;
   found.forEach(item=>{
@@ -1082,6 +1083,7 @@ window.openM=(type,...args)=>{
       <div class="field"><label>Presentación / Unidad</label><select id="m-unit">${unitsOpts()}</select></div>
       <div class="field"><label>Stock almacén inicial</label><input id="m-qty" type="number" min="0" value="0"></div>
       <div class="field"><label>Alerta mínimo de stock</label><input id="m-min" type="number" min="0" value="2"></div>
+      <div class="field"><label>Sinónimos (opcional, separados por coma)</label><input id="m-sin" placeholder="Ej: puntas azules, tips 1000" autocomplete="off"></div>
       <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-accent" onclick="window.doAdd()"><i class="ti ti-check"></i> Agregar</button></div>
     </div></div>`;
 
@@ -1096,6 +1098,7 @@ window.openM=(type,...args)=>{
       <div class="field"><label>Stock laboratorio</label><input id="m-lab" type="number" min="0" value="${item.lab}"></div>
       <div class="field"><label>Stock La Paila</label><input id="m-paila" type="number" min="0" value="${item.paila||0}"></div>
       <div class="field"><label>Alerta mínimo de stock</label><input id="m-min" type="number" min="0" value="${item.min||2}"></div>
+      <div class="field"><label>Sinónimos (opcional, separados por coma)</label><input id="m-sin" value="${txt(item.sinonimos||'')}" placeholder="Ej: puntas azules, tips 1000" autocomplete="off"></div>
       <div class="modal-actions">
         <button class="btn btn-danger btn-sm" onclick="window.openM('delete','${item.id}')"><i class="ti ti-trash"></i></button>
         <button class="btn btn-ghost" onclick="closeM()">Cancelar</button>
@@ -1106,12 +1109,14 @@ window.openM=(type,...args)=>{
   } else if(type==='ingreso'){
     if(!item) return; const from=args[1];
     const paila=item.paila||0;
-    const origenSelect=(from==='lab'||from==='paila')?`<div class="field"><label>¿De dónde viene?</label><select id="m-origen">
+    const origenSelect=`<div class="field"><label>¿De dónde viene?</label><select id="m-origen" onchange="document.getElementById('prestamoEntWrap').style.display=this.value==='prestamo'?'block':'none'">
       <option value="comercial">Casa comercial (producto nuevo)</option>
       <option value="farmacia">Farmacia</option>
-      <option value="almacen">Del almacén</option>
+      ${(from==='lab'||from==='paila')?`<option value="almacen">Del almacén</option>`:''}
       ${from==='paila'?`<option value="lab">Del laboratorio</option>`:''}
-    </select></div>`:'';
+      <option value="prestamo">Préstamo (nos prestaron — se registrará en Préstamos)</option>
+    </select></div>
+    <div class="field" id="prestamoEntWrap" style="display:none"><label>¿Quién nos presta?</label><input id="m-prestamo-ent" placeholder="Entidad, hospital, servicio..." autocomplete="off"></div>`;
     const color=from==='paila'?'#FFB347':'#4CAF7D';
     const lugar=from==='paila'?'La Paila':from==='lab'?'Laboratorio':'Almacén';
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
@@ -1142,11 +1147,15 @@ window.openM=(type,...args)=>{
       <div class="warn-box" style="border-color:rgba(255,179,71,.3);color:${color}">Desde: <b>${lugar}</b> · Disponible: <b>${disp} ${txt(item.unit)}</b></div>
       <div class="field"><label>Cantidad</label><input id="m-qty" type="number" min="1" max="${disp}" value="1" autofocus></div>
       <div class="field"><label>Servicio destinatario</label>
-        <select id="m-dest" onchange="document.getElementById('otroDestWrap').style.display=this.value==='__otro'?'block':'none'">
-          <option value="">Seleccionar servicio...</option>${servicesOpts()}<option value="__otro">Otro (especificar)...</option>
+        <select id="m-dest" onchange="document.getElementById('otroDestWrap').style.display=this.value==='__otro'?'block':'none';document.getElementById('devolucionWrap').style.display=this.value==='__devolucion'?'block':'none'">
+          <option value="">Seleccionar servicio...</option>${servicesOpts()}<option value="__otro">Otro (especificar)...</option><option value="__devolucion">Devolución (regresar insumo — se registrará en Devoluciones)</option>
         </select>
       </div>
       <div class="field" id="otroDestWrap" style="display:none"><label>Especificar servicio</label><input id="m-dest-otro" autocomplete="off"></div>
+      <div id="devolucionWrap" style="display:none">
+        <div class="field"><label>¿A quién se devuelve?</label><input id="m-dev-ent" placeholder="Entidad, casa comercial..." autocomplete="off"></div>
+        <div class="field"><label>Motivo</label><select id="m-dev-motivo"><option>Devolución de préstamo</option><option>Insumo defectuoso</option><option>Insumo vencido</option><option>Otro</option></select></div>
+      </div>
       <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-danger" onclick="window.doSalida('${item.id}','${from}',${item.almacen},${item.lab},'${txt(item.unit)}','${txt(item.name)}',${paila})"><i class="ti ti-door-exit"></i> Registrar salida</button></div>
     </div></div>`;
 
@@ -1325,7 +1334,10 @@ window.openM=(type,...args)=>{
         <option value="prestado">Nosotros prestamos (sale del laboratorio)</option>
         <option value="recibido">Nos prestan (llega al laboratorio, hay que devolver)</option>
       </select></div>
-      <div class="field"><label>Insumo</label><input id="m-pr-insumo" autofocus autocomplete="off"></div>
+      <div class="field"><label>Buscar insumo del kardex</label><input id="m-pr-busq" placeholder="Escribe para buscar..." autocomplete="off" oninput="window.buscarInsumoPrestamo(this.value)" autofocus></div>
+      <div id="prBusqResults" style="max-height:140px;overflow-y:auto;margin-bottom:8px"></div>
+      <div class="field"><label>Insumo</label><input id="m-pr-insumo" placeholder="Selecciónalo arriba o escríbelo manual" autocomplete="off"></div>
+      <input type="hidden" id="m-pr-itemid" value="">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="field"><label>Cantidad</label><input id="m-pr-qty" type="number" min="1" value="1"></div>
         <div class="field"><label>Presentación</label><select id="m-pr-unit">${unitsOpts()}</select></div>
@@ -1340,8 +1352,11 @@ window.openM=(type,...args)=>{
     const p=prestamoId?prestamos.find(x=>x.id===prestamoId):null;
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
       <h3><i class="ti ti-arrow-back-up" style="color:#F5A623"></i>${p?'Devolver préstamo':'Nueva devolución'}</h3>
-      ${p?`<div class="info-box" style="margin-bottom:10px;border-color:rgba(245,166,35,.3);color:#F5A623">Devolución del préstamo recibido de <b>${txt(p.entidad)}</b></div>`:''}
-      <div class="field"><label>Insumo</label><input id="m-dv-insumo" value="${p?txt(p.insumo):''}" ${p?'':'autofocus'} autocomplete="off"></div>
+      ${p?`<div class="info-box" style="margin-bottom:10px;border-color:rgba(245,166,35,.3);color:#F5A623">Devolución del préstamo recibido de <b>${txt(p.entidad)}</b></div>`:`
+      <div class="field"><label>Buscar insumo del kardex</label><input id="m-dv-busq" placeholder="Escribe para buscar..." autocomplete="off" oninput="window.buscarInsumoDevolucion(this.value)" autofocus></div>
+      <div id="dvBusqResults" style="max-height:140px;overflow-y:auto;margin-bottom:8px"></div>`}
+      <div class="field"><label>Insumo</label><input id="m-dv-insumo" value="${p?txt(p.insumo):''}" placeholder="Selecciónalo arriba o escríbelo manual" autocomplete="off"></div>
+      <input type="hidden" id="m-dv-itemid" value="">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="field"><label>Cantidad</label><input id="m-dv-qty" type="number" min="1" value="${p?p.qty:1}"></div>
         <div class="field"><label>Presentación</label><input id="m-dv-unit" value="${p?txt(p.unit||''):''}" placeholder="Unidad, Caja..." autocomplete="off"></div>
@@ -1669,19 +1684,29 @@ window.imprimirPedido=(id)=>{
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 window.doAdd=async()=>{
   const name=$('m-name')?.value.trim(); if(!name){alert('Escribe el nombre del insumo');return;}
-  await addDoc(collection(db,'items'),{name,cat:$('m-cat').value,unit:$('m-unit').value,almacen:parseInt($('m-qty').value)||0,lab:0,usoItems:[],min:parseInt($('m-min').value)||2,_pedidoPendiente:false});
+  await addDoc(collection(db,'items'),{name,cat:$('m-cat').value,unit:$('m-unit').value,almacen:parseInt($('m-qty').value)||0,lab:0,usoItems:[],min:parseInt($('m-min').value)||2,_pedidoPendiente:false,sinonimos:$('m-sin')?.value.trim()||''});
   await addLog('nuevo',`Insumo creado: ${name}`,`Almacén inicial: ${parseInt($('m-qty').value)||0} ${$('m-unit').value}`);
   closeM();
 };
 window.doEdit=async(id,prevA,prevL)=>{
   const name=$('m-name')?.value.trim(); if(!name) return;
-  await updateDoc(doc(db,'items',id),{name,cat:$('m-cat').value,unit:$('m-unit').value,almacen:parseInt($('m-almacen').value)||0,lab:parseInt($('m-lab').value)||0,paila:parseInt($('m-paila').value)||0,min:parseInt($('m-min').value)||2});
+  await updateDoc(doc(db,'items',id),{name,cat:$('m-cat').value,unit:$('m-unit').value,almacen:parseInt($('m-almacen').value)||0,lab:parseInt($('m-lab').value)||0,paila:parseInt($('m-paila').value)||0,min:parseInt($('m-min').value)||2,sinonimos:$('m-sin')?.value.trim()||''});
   await addLog('edit',`Editado: ${name}`,`Almacén: ${prevA}→${parseInt($('m-almacen').value)||0}, Laboratorio: ${prevL}→${parseInt($('m-lab').value)||0}`);
   closeM();
 };
 window.doIngreso=async(id,from,prevA,prevL,unit,name,prevP=0)=>{
   const qty=parseInt($('m-qty')?.value)||0; if(qty<=0){alert('Cantidad inválida');return;}
   const origen=$('m-origen')?.value||'comercial';
+  if(origen==='prestamo'){
+    const entidad=$('m-prestamo-ent')?.value.trim();
+    if(!entidad){alert('Escribe quién nos presta el insumo');return;}
+    const upd=from==='lab'?{lab:prevL+qty}:from==='paila'?{paila:prevP+qty}:{almacen:prevA+qty};
+    await updateDoc(doc(db,'items',id),upd);
+    await addDoc(collection(db,'prestamos'),{insumo:name,qty,unit,entidad,tipo:'recibido',obs:'Registrado desde ingreso',estado:'activo',fecha:tsDate(),createdAt:serverTimestamp()});
+    await addLog('ingreso',`Ingreso por préstamo de ${entidad}: ${name}`,`+${qty} ${unit}`);
+    closeM();
+    return;
+  }
   if(from==='lab'&&origen==='almacen'){
     if(prevA<qty){alert(`Solo hay ${prevA} ${unit} en almacén`);return;}
     await updateDoc(doc(db,'items',id),{almacen:prevA-qty,lab:prevL+qty});
@@ -1720,10 +1745,21 @@ window.doTransfer=async(id,prevA,prevL,unit,name)=>{
 window.doSalida=async(id,from,almacen,lab,unit,name,paila=0)=>{
   const qty=parseInt($('m-qty')?.value)||0;
   const selDest=$('m-dest')?.value, destOtro=$('m-dest-otro')?.value.trim();
-  const dest=selDest==='__otro'?destOtro||'Otro servicio':selDest||'Servicio externo';
-  if(!dest||dest==='Seleccionar servicio...'){alert('Selecciona un servicio destinatario');return;}
   const avail=from==='almacen'?almacen:from==='paila'?paila:lab;
   if(qty<=0||qty>avail){alert('Cantidad no válida');return;}
+  if(selDest==='__devolucion'){
+    const entidad=$('m-dev-ent')?.value.trim();
+    const motivo=$('m-dev-motivo')?.value||'Devolución';
+    if(!entidad){alert('Escribe a quién se devuelve');return;}
+    const upd=from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty};
+    await updateDoc(doc(db,'items',id),upd);
+    await addDoc(collection(db,'devoluciones'),{insumo:name,qty,unit,entidad,motivo,obs:'Registrada desde salida',prestamoId:null,fecha:tsDate(),hora:new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),createdAt:serverTimestamp()});
+    await addLog('salida',`Devolución a ${entidad}: ${name}`,`${qty} ${unit} · ${motivo}`);
+    closeM();
+    return;
+  }
+  const dest=selDest==='__otro'?destOtro||'Otro servicio':selDest||'Servicio externo';
+  if(!dest||dest==='Seleccionar servicio...'){alert('Selecciona un servicio destinatario');return;}
   const upd=from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty};
   await updateDoc(doc(db,'items',id),upd);
   const lugar=from==='almacen'?'almacén':from==='paila'?'La Paila':'laboratorio';
@@ -1841,9 +1877,9 @@ window.remManualSetTipo=(tipo)=>{
 
 window.remManualBuscar=(q)=>{
   const box=$('remManualResults'); if(!box) return;
-  q=(q||'').trim().toLowerCase();
+  q=norm((q||'').trim());
   if(!q){ box.innerHTML=''; return; }
-  const matches=items.filter(i=>(i.name||'').toLowerCase().includes(q)).slice(0,8);
+  const matches=items.filter(i=>norm(i.name).includes(q)||norm(i.sinonimos).includes(q)).slice(0,8);
   box.innerHTML=matches.length?matches.map(i=>`
     <div class="row row-clickable" style="padding:7px 8px" onclick="window.remManualSeleccionar('${i.id}')">
       <div style="flex:1;min-width:0"><div class="item-name" style="font-size:12px">${txt(i.name)}</div>
@@ -2228,6 +2264,48 @@ function renderPrestamos(){
   return h;
 }
 
+window.buscarInsumoDevolucion=(q)=>{
+  const box=$('dvBusqResults'); if(!box) return;
+  const nq=norm((q||'').trim());
+  if(!nq){box.innerHTML='';return;}
+  const matches=items.filter(i=>norm(i.name).includes(nq)||norm(i.sinonimos).includes(nq)).slice(0,6);
+  box.innerHTML=matches.length?matches.map(i=>`
+    <div class="row row-clickable" style="padding:6px 8px" onclick="window.selInsumoDevolucion('${i.id}')">
+      <div style="flex:1;min-width:0"><div class="item-name" style="font-size:12px">${txt(i.name)}</div>
+      <div class="item-sub">Lab: ${i.lab||0} · Almacén: ${i.almacen||0} · ${txt(i.unit)}</div></div>
+    </div>`).join('')
+    :`<div style="padding:6px 8px;font-size:11px;color:#7A9BB5">Sin coincidencias — escríbelo manual abajo.</div>`;
+};
+window.selInsumoDevolucion=(id)=>{
+  const it=items.find(x=>x.id===id); if(!it) return;
+  $('m-dv-insumo').value=it.name;
+  $('m-dv-unit').value=it.unit||'';
+  $('m-dv-itemid').value=id;
+  $('dvBusqResults').innerHTML='';
+  $('m-dv-busq').value=it.name;
+};
+
+window.buscarInsumoPrestamo=(q)=>{
+  const box=$('prBusqResults'); if(!box) return;
+  const nq=norm((q||'').trim());
+  if(!nq){box.innerHTML='';return;}
+  const matches=items.filter(i=>norm(i.name).includes(nq)||norm(i.sinonimos).includes(nq)).slice(0,6);
+  box.innerHTML=matches.length?matches.map(i=>`
+    <div class="row row-clickable" style="padding:6px 8px" onclick="window.selInsumoPrestamo('${i.id}')">
+      <div style="flex:1;min-width:0"><div class="item-name" style="font-size:12px">${txt(i.name)}</div>
+      <div class="item-sub">Lab: ${i.lab||0} · Almacén: ${i.almacen||0} · ${txt(i.unit)}</div></div>
+    </div>`).join('')
+    :`<div style="padding:6px 8px;font-size:11px;color:#7A9BB5">Sin coincidencias — escríbelo manual abajo.</div>`;
+};
+window.selInsumoPrestamo=(id)=>{
+  const it=items.find(x=>x.id===id); if(!it) return;
+  $('m-pr-insumo').value=it.name;
+  const sel=$('m-pr-unit'); if(sel){ [...sel.options].forEach(o=>{if(o.value===it.unit)sel.value=it.unit;}); }
+  $('m-pr-itemid').value=id;
+  $('prBusqResults').innerHTML='';
+  $('m-pr-busq').value=it.name;
+};
+
 window.doCrearPrestamo=async()=>{
   const insumo=$('m-pr-insumo')?.value.trim();
   const qty=parseInt($('m-pr-qty')?.value)||1;
@@ -2237,9 +2315,26 @@ window.doCrearPrestamo=async()=>{
   const obs=$('m-pr-obs')?.value.trim()||'';
   if(!insumo){alert('Escribe el insumo');return;}
   if(!entidad){alert('Escribe la entidad o servicio');return;}
-  await addDoc(collection(db,'prestamos'),{insumo,qty,unit,entidad,tipo,obs,estado:'activo',fecha:tsDate(),createdAt:serverTimestamp()});
+  const itemId=$('m-pr-itemid')?.value||'';
+  await addDoc(collection(db,'prestamos'),{insumo,qty,unit,entidad,tipo,obs,itemId:itemId||null,estado:'activo',fecha:tsDate(),createdAt:serverTimestamp()});
   await addLog('transfer',`Préstamo ${tipo==='recibido'?'recibido de':'entregado a'} ${entidad}`,`${qty} ${unit} · ${insumo}`);
   closeM();
+  // Si nos prestaron un insumo del kardex, preguntar si se suma al stock del laboratorio
+  if(tipo==='recibido'&&itemId){
+    const it=items.find(x=>x.id===itemId);
+    if(it&&confirm(`¿Agregar ${qty} ${unit} de "${insumo}" al stock del laboratorio?`)){
+      await updateDoc(doc(db,'items',itemId),{lab:(it.lab||0)+qty});
+      await addLog('ingreso',`Ingreso por préstamo de ${entidad}: ${insumo}`,`+${qty} ${unit}`);
+    }
+  }
+  // Si nosotros prestamos un insumo del kardex, preguntar si se descuenta del laboratorio
+  if(tipo==='prestado'&&itemId){
+    const it=items.find(x=>x.id===itemId);
+    if(it&&(it.lab||0)>0&&confirm(`¿Descontar ${qty} ${unit} de "${insumo}" del stock del laboratorio?`)){
+      await updateDoc(doc(db,'items',itemId),{lab:Math.max(0,(it.lab||0)-qty)});
+      await addLog('salida',`Salida por préstamo a ${entidad}: ${insumo}`,`${qty} ${unit}`);
+    }
+  }
 };
 
 window.marcarPrestamoDevuelto=async(id)=>{
@@ -2266,12 +2361,26 @@ window.doCrearDevolucion=async(prestamoId)=>{
   const obs=$('m-dv-obs')?.value.trim()||'';
   if(!insumo){alert('Escribe el insumo');return;}
   if(!entidad){alert('Escribe a quién se devuelve');return;}
-  await addDoc(collection(db,'devoluciones'),{insumo,qty,unit,entidad,motivo,obs,prestamoId:prestamoId||null,fecha:tsDate(),hora:new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),createdAt:serverTimestamp()});
+  const dvItemId=$('m-dv-itemid')?.value||'';
+  await addDoc(collection(db,'devoluciones'),{insumo,qty,unit,entidad,motivo,obs,prestamoId:prestamoId||null,itemId:dvItemId||null,fecha:tsDate(),hora:new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),createdAt:serverTimestamp()});
   if(prestamoId&&prestamoId!=='null'&&prestamoId!=='undefined'){
     await updateDoc(doc(db,'prestamos',prestamoId),{estado:'devuelto',devueltoEn:ts()}).catch(()=>{});
   }
   await addLog('transfer',`Devolución a ${entidad}`,`${qty} ${unit} · ${insumo} · ${motivo}`);
   closeM();
+  // Si el insumo está en el kardex, preguntar si se descuenta del stock del laboratorio
+  let idParaDescontar=dvItemId;
+  if(!idParaDescontar&&prestamoId){
+    const pr=prestamos.find(x=>x.id===prestamoId);
+    if(pr?.itemId) idParaDescontar=pr.itemId;
+  }
+  if(idParaDescontar){
+    const it=items.find(x=>x.id===idParaDescontar);
+    if(it&&(it.lab||0)>0&&confirm(`¿Descontar ${qty} ${unit} de "${insumo}" del stock del laboratorio?`)){
+      await updateDoc(doc(db,'items',idParaDescontar),{lab:Math.max(0,(it.lab||0)-qty)});
+      await addLog('salida',`Salida por devolución a ${entidad}: ${insumo}`,`${qty} ${unit}`);
+    }
+  }
 };
 
 window.doDeleteDevolucion=async(id)=>{
