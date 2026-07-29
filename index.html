@@ -336,7 +336,7 @@ function updateLockUI(){
 }
 
 // ── FIREBASE ─────────────────────────────────────────────────────────────────
-async function loadCfg(){ try{ const s=await getDoc(doc(db,'config','app')); if(s.exists()) Object.assign(cfg,s.data()); }catch(e){} if(!cfg.services.includes('__devolucion')) cfg.services.push('__devolucion'); }
+async function loadCfg(){ try{ const s=await getDoc(doc(db,'config','app')); if(s.exists()) Object.assign(cfg,s.data()); }catch(e){} if(!cfg.services.includes('__devolucion')) cfg.services.push('__devolucion'); if(!cfg.services.includes('__prestamo')) cfg.services.push('__prestamo'); }
 async function saveCfg(){ try{ await setDoc(doc(db,'config','app'),cfg); }catch(e){} }
 async function addLog(type,text,detail=''){ try{ await addDoc(collection(db,'logs'),{type,text,detail,time:ts(),createdAt:serverTimestamp()}); }catch(e){} }
 
@@ -1069,7 +1069,12 @@ window.checkAdminPap=()=>{
 // ── MODALES ───────────────────────────────────────────────────────────────────
 function catsOpts(sel=''){ return cfg.cats.map(c=>`<option ${c===sel?'selected':''}>${c}</option>`).join(''); }
 function unitsOpts(sel=''){ return cfg.units.map(u=>`<option ${u===sel?'selected':''}>${u}</option>`).join(''); }
-function servicesOpts(){ return cfg.services.map(s=>s==='__devolucion'?`<option value="__devolucion">Devolución (nosotros devolvemos — regresar insumo)</option>`:`<option>${s}</option>`).join(''); }
+function servicesOpts(){
+  const list=[...(cfg.services||[])];
+  if(!list.includes('__devolucion')) list.push('__devolucion');
+  if(!list.includes('__prestamo')) list.push('__prestamo');
+  return list.map(s=>s==='__devolucion'?`<option value="__devolucion">Devolución (nosotros devolvemos — regresar insumo)</option>`:s==='__prestamo'?`<option value="__prestamo">Préstamo (nosotros prestamos a otros)</option>`:`<option>${s}</option>`).join('');
+}
 
 window.openM=(type,...args)=>{
   const area=$('modal-area');
@@ -1156,15 +1161,20 @@ window.openM=(type,...args)=>{
       <div class="warn-box" style="border-color:rgba(255,179,71,.3);color:${color}">Desde: <b>${lugar}</b> · Disponible: <b>${disp} ${txt(item.unit)}</b></div>
       <div class="field"><label>Cantidad</label><input id="m-qty" type="number" min="1" max="${disp}" value="1" autofocus></div>
       <div class="field"><label>Servicio destinatario</label>
-        <select id="m-dest" onchange="document.getElementById('otroDestWrap').style.display=this.value==='__otro'?'block':'none';document.getElementById('devolucionWrap').style.display=this.value==='__devolucion'?'block':'none'">
+        <select id="m-dest" onchange="document.getElementById('otroDestWrap').style.display=this.value==='__otro'?'block':'none';document.getElementById('devolucionWrap').style.display=this.value==='__devolucion'?'block':'none';document.getElementById('prestamoSalWrap').style.display=this.value==='__prestamo'?'block':'none'">
           <option value="">Seleccionar servicio...</option>${servicesOpts()}<option value="__otro">Otro (especificar)...</option>
         </select>
       </div>
       <div class="field" id="otroDestWrap" style="display:none"><label>Especificar servicio</label><input id="m-dest-otro" autocomplete="off"></div>
+      <div id="prestamoSalWrap" style="display:none">
+        <div class="field"><label>¿A quién le prestamos?</label><input id="m-pre-sal-ent" placeholder="Entidad, hospital, servicio..." autocomplete="off"></div>
+        <div class="field"><label>Observaciones (opcional)</label><input id="m-pre-sal-obs" autocomplete="off"></div>
+      </div>
       <div id="devolucionWrap" style="display:none">
         <div class="field"><label>¿Corresponde a un préstamo pendiente?</label>
           <select id="m-dev-prestamo" onchange="const o=this.selectedOptions[0];if(o&&o.dataset.ent){document.getElementById('m-dev-ent').value=o.dataset.ent;document.getElementById('m-dev-motivo').value='Devolución de préstamo';}">
-            <option value="">No — es otra devolución</option>
+            <option value="" selected disabled>Seleccionar...</option>
+            <option value="__no">No — es otra devolución</option>
             ${prestamos.filter(p=>p.tipo==='recibido'&&p.estado!=='devuelto').map(p=>`<option value="${p.id}" data-ent="${txt(p.entidad||'')}">${txt(p.insumo)} · ${p.qty} ${txt(p.unit||'')} · de ${txt(p.entidad||'')}</option>`).join('')}
           </select>
         </div>
@@ -1276,7 +1286,7 @@ window.openM=(type,...args)=>{
     const esPaila=carritoRemision.some(ci=>ci.tipo==='traslado_paila');
     const destDefault=esPaila?'Laboratorio de Microbiología':'';
     const itemsPreview=carritoRemision.map(ci=>`<div style="padding:4px 0;border-bottom:1px solid rgba(46,69,96,.3);font-size:12px;color:#E8F4F2">${ci.qty} ${ci.unit} · ${txt(ci.name)} → ${txt(ci.dest)}</div>`).join('');
-    area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal"><h3><i class="ti ti-file-text" style="color:#64B5F6"></i>Confirmar remisión</h3><div style="max-height:150px;overflow-y:auto;margin-bottom:10px">${itemsPreview}</div>${!esPaila?`<div class="field"><label>Servicio destinatario</label><select id="m-rem-dest"><option value="">Seleccionar...</option>${(cfg.services||[]).filter(s=>s!=='__devolucion').map(s=>`<option>${s}</option>`).join('')}</select></div>`:`<div class="info-box" style="color:#FFB347;border-color:rgba(255,179,71,.3)">Destino: <b>Laboratorio de Microbiología</b></div>`}<div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-sm" style="background:#64B5F6;color:#0F1923" onclick="window.doConfirmarRemision('${esPaila?"traslado_paila":"salida"}',${esPaila?`'${destDefault}'`:`document.getElementById('m-rem-dest')?.value||'Sin especificar'`})"><i class="ti ti-printer"></i> Generar e imprimir</button></div></div></div>`;
+    area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal"><h3><i class="ti ti-file-text" style="color:#64B5F6"></i>Confirmar remisión</h3><div style="max-height:150px;overflow-y:auto;margin-bottom:10px">${itemsPreview}</div>${!esPaila?`<div class="field"><label>Servicio destinatario</label><select id="m-rem-dest"><option value="">Seleccionar...</option>${(cfg.services||[]).filter(s=>s!=='__devolucion'&&s!=='__prestamo').map(s=>`<option>${s}</option>`).join('')}</select></div>`:`<div class="info-box" style="color:#FFB347;border-color:rgba(255,179,71,.3)">Destino: <b>Laboratorio de Microbiología</b></div>`}<div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-sm" style="background:#64B5F6;color:#0F1923" onclick="window.doConfirmarRemision('${esPaila?"traslado_paila":"salida"}',${esPaila?`'${destDefault}'`:`document.getElementById('m-rem-dest')?.value||'Sin especificar'`})"><i class="ti ti-printer"></i> Generar e imprimir</button></div></div></div>`;
 
   } else if(type==='remManualTipo'){
     if(!manualRem) manualRem={tipo:'',destinoLibre:'',items:[]};
@@ -1784,10 +1794,24 @@ window.doSalida=async(id,from,almacen,lab,unit,name,paila=0)=>{
   const selDest=$('m-dest')?.value, destOtro=$('m-dest-otro')?.value.trim();
   const avail=from==='almacen'?almacen:from==='paila'?paila:lab;
   if(qty<=0||qty>avail){alert('Cantidad no válida');return;}
+  if(selDest==='__prestamo'){
+    const entidad=$('m-pre-sal-ent')?.value.trim();
+    const obs=$('m-pre-sal-obs')?.value.trim()||'';
+    if(!entidad){alert('Escribe a quién le prestamos');return;}
+    const upd=from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty};
+    await updateDoc(doc(db,'items',id),upd);
+    await addDoc(collection(db,'prestamos'),{insumo:name,qty,unit,entidad,tipo:'prestado',itemId:id,obs:obs||'Registrado desde salida',estado:'activo',fecha:tsDate(),createdAt:serverTimestamp()});
+    await addLog('salida',`Préstamo entregado a ${entidad}: ${name}`,`${qty} ${unit}`);
+    closeM();
+    window.setTabDirect('prestamos');
+    return;
+  }
   if(selDest==='__devolucion'){
     const entidad=$('m-dev-ent')?.value.trim();
     const motivo=$('m-dev-motivo')?.value||'Devolución';
-    const prId=$('m-dev-prestamo')?.value||'';
+    let prId=$('m-dev-prestamo')?.value||'';
+    if(!prId){alert('Indica si corresponde a un préstamo pendiente o selecciona "No — es otra devolución"');return;}
+    if(prId==='__no') prId='';
     if(!entidad){alert('Escribe a quién se devuelve');return;}
     const upd=from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty};
     await updateDoc(doc(db,'items',id),upd);
@@ -2729,12 +2753,15 @@ window.openUserModal=(type)=>{
   } else if(type==='services'){
     requireAdmin(()=>{
       const rowsH=()=>cfg.services.map((s,i)=>{
-        const esDev=s==='__devolucion';
+        const esDev=s==='__devolucion', esPre=s==='__prestamo', fijo=esDev||esPre;
+        const lbl=esDev?'<i class="ti ti-arrow-back-up" style="margin-right:4px"></i>Devolución <span style="font-size:10px;color:#7A9BB5">(fija — nosotros devolvemos)</span>'
+          :esPre?'<i class="ti ti-arrow-up-right" style="margin-right:4px"></i>Préstamo <span style="font-size:10px;color:#7A9BB5">(fija — nosotros prestamos)</span>'
+          :txt(s);
         return `<div style="display:flex;align-items:center;gap:4px;padding:6px 0;border-bottom:1px solid rgba(46,69,96,.35)">
-          <div style="flex:1;min-width:0;font-size:13px;color:${esDev?'#F5A623':'#E8F4F2'}">${esDev?'<i class="ti ti-arrow-back-up" style="margin-right:4px"></i>Devolución <span style="font-size:10px;color:#7A9BB5">(opción fija — nosotros devolvemos)</span>':txt(s)}</div>
+          <div style="flex:1;min-width:0;font-size:13px;color:${esDev?'#F5A623':esPre?'#A78BFA':'#E8F4F2'}">${lbl}</div>
           <button class="btn btn-ghost btn-sm" onclick="window.moveSvc(${i},-1)" ${i===0?'disabled style="opacity:.3"':''} title="Subir"><i class="ti ti-arrow-up"></i></button>
           <button class="btn btn-ghost btn-sm" onclick="window.moveSvc(${i},1)" ${i===cfg.services.length-1?'disabled style="opacity:.3"':''} title="Bajar"><i class="ti ti-arrow-down"></i></button>
-          ${esDev?'':`<button class="btn btn-ghost btn-sm" onclick="window.renameSvc(${i})" title="Renombrar"><i class="ti ti-pencil" style="color:#00C9B1"></i></button><button class="btn btn-ghost btn-sm" onclick="window.removeSvc(${i})" title="Eliminar"><i class="ti ti-trash" style="color:#E8484A"></i></button>`}
+          ${fijo?'':`<button class="btn btn-ghost btn-sm" onclick="window.renameSvc(${i})" title="Renombrar"><i class="ti ti-pencil" style="color:#00C9B1"></i></button><button class="btn btn-ghost btn-sm" onclick="window.removeSvc(${i})" title="Eliminar"><i class="ti ti-trash" style="color:#E8484A"></i></button>`}
         </div>`;
       }).join('');
       window._refreshSvcList=()=>{ const el=$('svcList'); if(el) el.innerHTML=rowsH(); };
@@ -2748,7 +2775,7 @@ window.openUserModal=(type)=>{
     });
   } else if(type==='remisionSvcs'){
     requireAdmin(()=>{
-      const listH=()=>(cfg.services||[]).filter(s=>s!=='__devolucion').map((s,i)=>{
+      const listH=()=>(cfg.services||[]).filter(s=>s!=='__devolucion'&&s!=='__prestamo').map((s,i)=>{
         const checked=(cfg.remisionServices||[]).includes(s);
         return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(46,69,96,.35)">
           <span style="font-size:13px;color:#E8F4F2">${txt(s)}</span>
@@ -2768,7 +2795,7 @@ window.openUserModal=(type)=>{
 
   } else if(type==='usoSvcs'){
     requireAdmin(()=>{
-      const listH=()=>(cfg.services||[]).filter(s=>s!=='__devolucion').map((s,i)=>{
+      const listH=()=>(cfg.services||[]).filter(s=>s!=='__devolucion'&&s!=='__prestamo').map((s,i)=>{
         const checked=(cfg.usoServices||[]).includes(s);
         return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(46,69,96,.35)">
           <span style="font-size:13px;color:#E8F4F2">${txt(s)}</span>
@@ -2846,7 +2873,7 @@ window.moveSvc=async(i,dir)=>{
   await saveCfg(); window._refreshSvcList?.();
 };
 window.renameSvc=async(i)=>{
-  const cur=cfg.services[i]; if(cur==='__devolucion') return;
+  const cur=cfg.services[i]; if(cur==='__devolucion'||cur==='__prestamo') return;
   const nv=prompt('Nuevo nombre del servicio:',cur);
   if(!nv||!nv.trim()||nv.trim()===cur) return;
   const v=nv.trim();
@@ -2856,7 +2883,7 @@ window.renameSvc=async(i)=>{
   await saveCfg(); window._refreshSvcList?.();
 };
 window.removeSvc=async(i)=>{
-  const cur=cfg.services[i]; if(cur==='__devolucion') return;
+  const cur=cfg.services[i]; if(cur==='__devolucion'||cur==='__prestamo') return;
   if(!confirm(`¿Eliminar el servicio "${cur}"?`)) return;
   cfg.remisionServices=(cfg.remisionServices||[]).filter(s=>s!==cur);
   cfg.usoServices=(cfg.usoServices||[]).filter(s=>s!==cur);
