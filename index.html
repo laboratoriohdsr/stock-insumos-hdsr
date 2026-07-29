@@ -336,7 +336,7 @@ function updateLockUI(){
 }
 
 // ── FIREBASE ─────────────────────────────────────────────────────────────────
-async function loadCfg(){ try{ const s=await getDoc(doc(db,'config','app')); if(s.exists()) Object.assign(cfg,s.data()); }catch(e){} }
+async function loadCfg(){ try{ const s=await getDoc(doc(db,'config','app')); if(s.exists()) Object.assign(cfg,s.data()); }catch(e){} if(!cfg.services.includes('__devolucion')) cfg.services.push('__devolucion'); }
 async function saveCfg(){ try{ await setDoc(doc(db,'config','app'),cfg); }catch(e){} }
 async function addLog(type,text,detail=''){ try{ await addDoc(collection(db,'logs'),{type,text,detail,time:ts(),createdAt:serverTimestamp()}); }catch(e){} }
 
@@ -1069,7 +1069,7 @@ window.checkAdminPap=()=>{
 // ── MODALES ───────────────────────────────────────────────────────────────────
 function catsOpts(sel=''){ return cfg.cats.map(c=>`<option ${c===sel?'selected':''}>${c}</option>`).join(''); }
 function unitsOpts(sel=''){ return cfg.units.map(u=>`<option ${u===sel?'selected':''}>${u}</option>`).join(''); }
-function servicesOpts(){ return cfg.services.map(s=>`<option>${s}</option>`).join(''); }
+function servicesOpts(){ return cfg.services.map(s=>s==='__devolucion'?`<option value="__devolucion">Devolución (nosotros devolvemos — regresar insumo)</option>`:`<option>${s}</option>`).join(''); }
 
 window.openM=(type,...args)=>{
   const area=$('modal-area');
@@ -1109,14 +1109,23 @@ window.openM=(type,...args)=>{
   } else if(type==='ingreso'){
     if(!item) return; const from=args[1];
     const paila=item.paila||0;
-    const origenSelect=`<div class="field"><label>¿De dónde viene?</label><select id="m-origen" onchange="document.getElementById('prestamoEntWrap').style.display=this.value==='prestamo'?'block':'none'">
+    const prestadosPend=prestamos.filter(p=>p.tipo==='prestado'&&p.estado!=='devuelto');
+    const origenSelect=`<div class="field"><label>¿De dónde viene?</label><select id="m-origen" onchange="document.getElementById('prestamoEntWrap').style.display=this.value==='prestamo'?'block':'none';document.getElementById('regresadoWrap').style.display=this.value==='regresado'?'block':'none'">
+      <option value="" selected disabled>Seleccionar origen...</option>
       <option value="comercial">Casa comercial (producto nuevo)</option>
       <option value="farmacia">Farmacia</option>
       ${(from==='lab'||from==='paila')?`<option value="almacen">Del almacén</option>`:''}
       ${from==='paila'?`<option value="lab">Del laboratorio</option>`:''}
       <option value="prestamo">Préstamo (nos prestaron — se registrará en Préstamos)</option>
+      <option value="regresado">Nos regresaron algo que habíamos prestado</option>
     </select></div>
-    <div class="field" id="prestamoEntWrap" style="display:none"><label>¿Quién nos presta?</label><input id="m-prestamo-ent" placeholder="Entidad, hospital, servicio..." autocomplete="off"></div>`;
+    <div class="field" id="prestamoEntWrap" style="display:none"><label>¿Quién nos presta?</label><input id="m-prestamo-ent" placeholder="Entidad, hospital, servicio..." autocomplete="off"></div>
+    <div class="field" id="regresadoWrap" style="display:none"><label>¿Cuál préstamo nos regresan?</label>
+      <select id="m-regresado-prestamo">
+        <option value="">No está en la lista / otro</option>
+        ${prestadosPend.map(p=>`<option value="${p.id}">${txt(p.insumo)} · ${p.qty} ${txt(p.unit||'')} · a ${txt(p.entidad||'')}</option>`).join('')}
+      </select>
+    </div>`;
     const color=from==='paila'?'#FFB347':'#4CAF7D';
     const lugar=from==='paila'?'La Paila':from==='lab'?'Laboratorio':'Almacén';
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
@@ -1148,11 +1157,17 @@ window.openM=(type,...args)=>{
       <div class="field"><label>Cantidad</label><input id="m-qty" type="number" min="1" max="${disp}" value="1" autofocus></div>
       <div class="field"><label>Servicio destinatario</label>
         <select id="m-dest" onchange="document.getElementById('otroDestWrap').style.display=this.value==='__otro'?'block':'none';document.getElementById('devolucionWrap').style.display=this.value==='__devolucion'?'block':'none'">
-          <option value="">Seleccionar servicio...</option>${servicesOpts()}<option value="__otro">Otro (especificar)...</option><option value="__devolucion">Devolución (regresar insumo — se registrará en Devoluciones)</option>
+          <option value="">Seleccionar servicio...</option>${servicesOpts()}<option value="__otro">Otro (especificar)...</option>
         </select>
       </div>
       <div class="field" id="otroDestWrap" style="display:none"><label>Especificar servicio</label><input id="m-dest-otro" autocomplete="off"></div>
       <div id="devolucionWrap" style="display:none">
+        <div class="field"><label>¿Corresponde a un préstamo pendiente?</label>
+          <select id="m-dev-prestamo" onchange="const o=this.selectedOptions[0];if(o&&o.dataset.ent){document.getElementById('m-dev-ent').value=o.dataset.ent;document.getElementById('m-dev-motivo').value='Devolución de préstamo';}">
+            <option value="">No — es otra devolución</option>
+            ${prestamos.filter(p=>p.tipo==='recibido'&&p.estado!=='devuelto').map(p=>`<option value="${p.id}" data-ent="${txt(p.entidad||'')}">${txt(p.insumo)} · ${p.qty} ${txt(p.unit||'')} · de ${txt(p.entidad||'')}</option>`).join('')}
+          </select>
+        </div>
         <div class="field"><label>¿A quién se devuelve?</label><input id="m-dev-ent" placeholder="Entidad, casa comercial..." autocomplete="off"></div>
         <div class="field"><label>Motivo</label><select id="m-dev-motivo"><option>Devolución de préstamo</option><option>Insumo defectuoso</option><option>Insumo vencido</option><option>Otro</option></select></div>
       </div>
@@ -1261,7 +1276,7 @@ window.openM=(type,...args)=>{
     const esPaila=carritoRemision.some(ci=>ci.tipo==='traslado_paila');
     const destDefault=esPaila?'Laboratorio de Microbiología':'';
     const itemsPreview=carritoRemision.map(ci=>`<div style="padding:4px 0;border-bottom:1px solid rgba(46,69,96,.3);font-size:12px;color:#E8F4F2">${ci.qty} ${ci.unit} · ${txt(ci.name)} → ${txt(ci.dest)}</div>`).join('');
-    area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal"><h3><i class="ti ti-file-text" style="color:#64B5F6"></i>Confirmar remisión</h3><div style="max-height:150px;overflow-y:auto;margin-bottom:10px">${itemsPreview}</div>${!esPaila?`<div class="field"><label>Servicio destinatario</label><select id="m-rem-dest"><option value="">Seleccionar...</option>${(cfg.services||[]).map(s=>`<option>${s}</option>`).join('')}</select></div>`:`<div class="info-box" style="color:#FFB347;border-color:rgba(255,179,71,.3)">Destino: <b>Laboratorio de Microbiología</b></div>`}<div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-sm" style="background:#64B5F6;color:#0F1923" onclick="window.doConfirmarRemision('${esPaila?"traslado_paila":"salida"}',${esPaila?`'${destDefault}'`:`document.getElementById('m-rem-dest')?.value||'Sin especificar'`})"><i class="ti ti-printer"></i> Generar e imprimir</button></div></div></div>`;
+    area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal"><h3><i class="ti ti-file-text" style="color:#64B5F6"></i>Confirmar remisión</h3><div style="max-height:150px;overflow-y:auto;margin-bottom:10px">${itemsPreview}</div>${!esPaila?`<div class="field"><label>Servicio destinatario</label><select id="m-rem-dest"><option value="">Seleccionar...</option>${(cfg.services||[]).filter(s=>s!=='__devolucion').map(s=>`<option>${s}</option>`).join('')}</select></div>`:`<div class="info-box" style="color:#FFB347;border-color:rgba(255,179,71,.3)">Destino: <b>Laboratorio de Microbiología</b></div>`}<div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-sm" style="background:#64B5F6;color:#0F1923" onclick="window.doConfirmarRemision('${esPaila?"traslado_paila":"salida"}',${esPaila?`'${destDefault}'`:`document.getElementById('m-rem-dest')?.value||'Sin especificar'`})"><i class="ti ti-printer"></i> Generar e imprimir</button></div></div></div>`;
 
   } else if(type==='remManualTipo'){
     if(!manualRem) manualRem={tipo:'',destinoLibre:'',items:[]};
@@ -1362,6 +1377,11 @@ window.openM=(type,...args)=>{
         <div class="field"><label>Presentación</label><input id="m-dv-unit" value="${p?txt(p.unit||''):''}" placeholder="Unidad, Caja..." autocomplete="off"></div>
       </div>
       <div class="field"><label>Se devuelve a</label><input id="m-dv-entidad" value="${p?txt(p.entidad):''}" placeholder="Entidad, casa comercial, servicio..." autocomplete="off"></div>
+      <div class="field"><label>¿Descontar del stock?</label><select id="m-dv-stock">
+        <option value="no">No descontar</option>
+        <option value="lab">Sí — del laboratorio</option>
+        <option value="almacen">Sí — del almacén</option>
+      </select></div>
       <div class="field"><label>Motivo</label><select id="m-dv-motivo">
         <option value="Devolución de préstamo">Devolución de préstamo</option>
         <option value="Insumo defectuoso">Insumo defectuoso / llegó mal</option>
@@ -1696,15 +1716,32 @@ window.doEdit=async(id,prevA,prevL)=>{
 };
 window.doIngreso=async(id,from,prevA,prevL,unit,name,prevP=0)=>{
   const qty=parseInt($('m-qty')?.value)||0; if(qty<=0){alert('Cantidad inválida');return;}
-  const origen=$('m-origen')?.value||'comercial';
+  const origen=$('m-origen')?.value||'';
+  if(!origen){alert('Selecciona de dónde viene el insumo');return;}
   if(origen==='prestamo'){
     const entidad=$('m-prestamo-ent')?.value.trim();
     if(!entidad){alert('Escribe quién nos presta el insumo');return;}
     const upd=from==='lab'?{lab:prevL+qty}:from==='paila'?{paila:prevP+qty}:{almacen:prevA+qty};
     await updateDoc(doc(db,'items',id),upd);
-    await addDoc(collection(db,'prestamos'),{insumo:name,qty,unit,entidad,tipo:'recibido',obs:'Registrado desde ingreso',estado:'activo',fecha:tsDate(),createdAt:serverTimestamp()});
+    await addDoc(collection(db,'prestamos'),{insumo:name,qty,unit,entidad,tipo:'recibido',itemId:id,obs:'Registrado desde ingreso',estado:'activo',fecha:tsDate(),createdAt:serverTimestamp()});
     await addLog('ingreso',`Ingreso por préstamo de ${entidad}: ${name}`,`+${qty} ${unit}`);
     closeM();
+    window.setTabDirect('prestamos');
+    return;
+  }
+  if(origen==='regresado'){
+    const prId=$('m-regresado-prestamo')?.value||'';
+    const upd=from==='lab'?{lab:prevL+qty}:from==='paila'?{paila:prevP+qty}:{almacen:prevA+qty};
+    await updateDoc(doc(db,'items',id),upd);
+    let quien='';
+    if(prId){
+      const pr=prestamos.find(x=>x.id===prId);
+      quien=pr?.entidad||'';
+      await updateDoc(doc(db,'prestamos',prId),{estado:'devuelto',devueltoEn:ts()}).catch(()=>{});
+    }
+    await addLog('ingreso',`Nos regresaron${quien?` (${quien})`:''}: ${name}`,`+${qty} ${unit}`);
+    closeM();
+    if(prId) window.setTabDirect('prestamos');
     return;
   }
   if(from==='lab'&&origen==='almacen'){
@@ -1750,12 +1787,15 @@ window.doSalida=async(id,from,almacen,lab,unit,name,paila=0)=>{
   if(selDest==='__devolucion'){
     const entidad=$('m-dev-ent')?.value.trim();
     const motivo=$('m-dev-motivo')?.value||'Devolución';
+    const prId=$('m-dev-prestamo')?.value||'';
     if(!entidad){alert('Escribe a quién se devuelve');return;}
     const upd=from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty};
     await updateDoc(doc(db,'items',id),upd);
-    await addDoc(collection(db,'devoluciones'),{insumo:name,qty,unit,entidad,motivo,obs:'Registrada desde salida',prestamoId:null,fecha:tsDate(),hora:new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),createdAt:serverTimestamp()});
+    await addDoc(collection(db,'devoluciones'),{insumo:name,qty,unit,entidad,motivo,obs:'Registrada desde salida',prestamoId:prId||null,fecha:tsDate(),hora:new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),createdAt:serverTimestamp()});
+    if(prId){ await updateDoc(doc(db,'prestamos',prId),{estado:'devuelto',devueltoEn:ts()}).catch(()=>{}); }
     await addLog('salida',`Devolución a ${entidad}: ${name}`,`${qty} ${unit} · ${motivo}`);
     closeM();
+    window.setTabDirect('prestamos');
     return;
   }
   const dest=selDest==='__otro'?destOtro||'Otro servicio':selDest||'Servicio externo';
@@ -2368,18 +2408,22 @@ window.doCrearDevolucion=async(prestamoId)=>{
   }
   await addLog('transfer',`Devolución a ${entidad}`,`${qty} ${unit} · ${insumo} · ${motivo}`);
   closeM();
-  // Si el insumo está en el kardex, preguntar si se descuenta del stock del laboratorio
+  // Descontar del stock según lo elegido en el formulario
+  const stockDe=$('m-dv-stock')?.value||'no';
   let idParaDescontar=dvItemId;
   if(!idParaDescontar&&prestamoId){
     const pr=prestamos.find(x=>x.id===prestamoId);
     if(pr?.itemId) idParaDescontar=pr.itemId;
   }
-  if(idParaDescontar){
+  if(stockDe!=='no'&&idParaDescontar){
     const it=items.find(x=>x.id===idParaDescontar);
-    if(it&&(it.lab||0)>0&&confirm(`¿Descontar ${qty} ${unit} de "${insumo}" del stock del laboratorio?`)){
-      await updateDoc(doc(db,'items',idParaDescontar),{lab:Math.max(0,(it.lab||0)-qty)});
-      await addLog('salida',`Salida por devolución a ${entidad}: ${insumo}`,`${qty} ${unit}`);
+    if(it){
+      const upd=stockDe==='lab'?{lab:Math.max(0,(it.lab||0)-qty)}:{almacen:Math.max(0,(it.almacen||0)-qty)};
+      await updateDoc(doc(db,'items',idParaDescontar),upd);
+      await addLog('salida',`Salida por devolución a ${entidad}: ${insumo}`,`${qty} ${unit} (${stockDe==='lab'?'laboratorio':'almacén'})`);
     }
+  } else if(stockDe!=='no'&&!idParaDescontar){
+    alert('El insumo no está vinculado al kardex, no se descontó stock.');
   }
 };
 
@@ -2684,16 +2728,27 @@ window.openUserModal=(type)=>{
     });
   } else if(type==='services'){
     requireAdmin(()=>{
-      area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
+      const rowsH=()=>cfg.services.map((s,i)=>{
+        const esDev=s==='__devolucion';
+        return `<div style="display:flex;align-items:center;gap:4px;padding:6px 0;border-bottom:1px solid rgba(46,69,96,.35)">
+          <div style="flex:1;min-width:0;font-size:13px;color:${esDev?'#F5A623':'#E8F4F2'}">${esDev?'<i class="ti ti-arrow-back-up" style="margin-right:4px"></i>Devolución <span style="font-size:10px;color:#7A9BB5">(opción fija — nosotros devolvemos)</span>':txt(s)}</div>
+          <button class="btn btn-ghost btn-sm" onclick="window.moveSvc(${i},-1)" ${i===0?'disabled style="opacity:.3"':''} title="Subir"><i class="ti ti-arrow-up"></i></button>
+          <button class="btn btn-ghost btn-sm" onclick="window.moveSvc(${i},1)" ${i===cfg.services.length-1?'disabled style="opacity:.3"':''} title="Bajar"><i class="ti ti-arrow-down"></i></button>
+          ${esDev?'':`<button class="btn btn-ghost btn-sm" onclick="window.renameSvc(${i})" title="Renombrar"><i class="ti ti-pencil" style="color:#00C9B1"></i></button><button class="btn btn-ghost btn-sm" onclick="window.removeSvc(${i})" title="Eliminar"><i class="ti ti-trash" style="color:#E8484A"></i></button>`}
+        </div>`;
+      }).join('');
+      window._refreshSvcList=()=>{ const el=$('svcList'); if(el) el.innerHTML=rowsH(); };
+      area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal" style="max-width:460px">
         <h3><i class="ti ti-building-hospital" style="color:#00C9B1"></i>Servicios destinatarios</h3>
-        <div class="tag-list" id="svcList">${cfg.services.map((s,i)=>`<div class="tag">${txt(s)}<button onclick="window.removeSvc(${i})">✕</button></div>`).join('')}</div>
+        <p style="color:#7A9BB5;font-size:11px;margin-bottom:8px">Este orden es el que verás en el selector de salidas. La opción "Devolución" es fija: puedes moverla pero no eliminarla ni renombrarla.</p>
+        <div id="svcList" style="max-height:300px;overflow-y:auto;margin-bottom:10px">${rowsH()}</div>
         <div style="display:flex;gap:6px"><input id="newSvc" placeholder="Nuevo servicio" class="search" style="margin:0" autocomplete="off" onkeydown="if(event.key==='Enter')window.addSvc()"><button class="btn btn-accent btn-sm" onclick="window.addSvc()"><i class="ti ti-plus"></i> Agregar</button></div>
         <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cerrar</button></div>
       </div></div>`;
     });
   } else if(type==='remisionSvcs'){
     requireAdmin(()=>{
-      const listH=()=>(cfg.services||[]).map((s,i)=>{
+      const listH=()=>(cfg.services||[]).filter(s=>s!=='__devolucion').map((s,i)=>{
         const checked=(cfg.remisionServices||[]).includes(s);
         return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(46,69,96,.35)">
           <span style="font-size:13px;color:#E8F4F2">${txt(s)}</span>
@@ -2713,7 +2768,7 @@ window.openUserModal=(type)=>{
 
   } else if(type==='usoSvcs'){
     requireAdmin(()=>{
-      const listH=()=>(cfg.services||[]).map((s,i)=>{
+      const listH=()=>(cfg.services||[]).filter(s=>s!=='__devolucion').map((s,i)=>{
         const checked=(cfg.usoServices||[]).includes(s);
         return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(46,69,96,.35)">
           <span style="font-size:13px;color:#E8F4F2">${txt(s)}</span>
@@ -2785,8 +2840,30 @@ window.removeCat=async(i)=>{ cfg.cats.splice(i,1); await saveCfg(); $('catList')
 window.addCat=async()=>{ const v=$('newCat')?.value.trim(); if(!v) return; cfg.cats.push(v); await saveCfg(); $('newCat').value=''; $('catList').innerHTML=cfg.cats.map((c,j)=>`<div class="tag">${txt(c)}<button onclick="window.removeCat(${j})">✕</button></div>`).join(''); };
 window.removeUnit=async(i)=>{ cfg.units.splice(i,1); await saveCfg(); $('unitList').innerHTML=cfg.units.map((u,j)=>`<div class="tag">${txt(u)}<button onclick="window.removeUnit(${j})">✕</button></div>`).join(''); };
 window.addUnit=async()=>{ const v=$('newUnit')?.value.trim(); if(!v) return; cfg.units.push(v); await saveCfg(); $('newUnit').value=''; $('unitList').innerHTML=cfg.units.map((u,j)=>`<div class="tag">${txt(u)}<button onclick="window.removeUnit(${j})">✕</button></div>`).join(''); };
-window.removeSvc=async(i)=>{ cfg.services.splice(i,1); await saveCfg(); $('svcList').innerHTML=cfg.services.map((s,j)=>`<div class="tag">${txt(s)}<button onclick="window.removeSvc(${j})">✕</button></div>`).join(''); };
-window.addSvc=async()=>{ const v=$('newSvc')?.value.trim(); if(!v) return; cfg.services.push(v); await saveCfg(); $('newSvc').value=''; $('svcList').innerHTML=cfg.services.map((s,j)=>`<div class="tag">${txt(s)}<button onclick="window.removeSvc(${j})">✕</button></div>`).join(''); };
+window.moveSvc=async(i,dir)=>{
+  const j=i+dir; if(j<0||j>=cfg.services.length) return;
+  [cfg.services[i],cfg.services[j]]=[cfg.services[j],cfg.services[i]];
+  await saveCfg(); window._refreshSvcList?.();
+};
+window.renameSvc=async(i)=>{
+  const cur=cfg.services[i]; if(cur==='__devolucion') return;
+  const nv=prompt('Nuevo nombre del servicio:',cur);
+  if(!nv||!nv.trim()||nv.trim()===cur) return;
+  const v=nv.trim();
+  cfg.remisionServices=(cfg.remisionServices||[]).map(s=>s===cur?v:s);
+  cfg.usoServices=(cfg.usoServices||[]).map(s=>s===cur?v:s);
+  cfg.services[i]=v;
+  await saveCfg(); window._refreshSvcList?.();
+};
+window.removeSvc=async(i)=>{
+  const cur=cfg.services[i]; if(cur==='__devolucion') return;
+  if(!confirm(`¿Eliminar el servicio "${cur}"?`)) return;
+  cfg.remisionServices=(cfg.remisionServices||[]).filter(s=>s!==cur);
+  cfg.usoServices=(cfg.usoServices||[]).filter(s=>s!==cur);
+  cfg.services.splice(i,1);
+  await saveCfg(); window._refreshSvcList?.();
+};
+window.addSvc=async()=>{ const v=$('newSvc')?.value.trim(); if(!v) return; cfg.services.push(v); await saveCfg(); $('newSvc').value=''; window._refreshSvcList?.(); };
 
 window.toggleAddLock=()=>{ if(ST.addLocked){requireAdmin(()=>{ST.addLocked=false;updateLockUI();});}else{ST.addLocked=true;updateLockUI();} };
 window.tryNewItem=()=>{ if(!ST.addLocked) window.openM('addItem'); };
