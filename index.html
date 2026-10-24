@@ -121,6 +121,7 @@ html,body{background:#0F1923;color:#E8F4F2;font-family:system-ui,-apple-system,s
 .item-name{font-weight:500;color:#E8F4F2;font-size:13px}
 .item-sub{font-size:11px;color:#7A9BB5;margin-top:1px}
 .badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap}
+button.badge{border:none;cursor:pointer;font-family:inherit}
 .b-stock{background:rgba(0,201,177,.15);color:#00C9B1}
 .b-uso{background:rgba(245,166,35,.15);color:#F5A623}
 .b-low{background:rgba(232,72,74,.15);color:#E8484A}
@@ -226,6 +227,7 @@ html,body{background:#0F1923;color:#E8F4F2;font-family:system-ui,-apple-system,s
           </div>
           <button class="user-menu-item" onclick="window.closeUserMenu();window.openUserModal('pass')"><i class="ti ti-key"></i>Cambiar contraseña</button>
           <button class="user-menu-item" onclick="window.closeUserMenu();window.openUserModal('cats')"><i class="ti ti-tag"></i>Configurar categorías</button>
+          <button class="user-menu-item" onclick="window.closeUserMenu();window.openUserModal('areas')"><i class="ti ti-flask-2" style="color:#A78BFA"></i>Áreas / Especialidades</button>
           <button class="user-menu-item" onclick="window.closeUserMenu();window.openUserModal('units')"><i class="ti ti-ruler"></i>Configurar unidades</button>
           <button class="user-menu-item" onclick="window.closeUserMenu();window.openUserModal('services')"><i class="ti ti-building-hospital"></i>Configurar servicios</button>
           <button class="user-menu-item" onclick="window.closeUserMenu();window.openUserModal('remisionSvcs')"><i class="ti ti-file-text" style="color:#64B5F6"></i>Servicios que piden remisión</button>
@@ -271,7 +273,7 @@ html,body{background:#0F1923;color:#E8F4F2;font-family:system-ui,-apple-system,s
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getFirestore, enableIndexedDbPersistence, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc,
-  serverTimestamp, query, orderBy, limit, getDoc, setDoc, writeBatch }
+  serverTimestamp, query, orderBy, limit, getDoc, getDocs, setDoc, writeBatch, where }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const db = getFirestore(initializeApp({
@@ -294,6 +296,7 @@ let manualRem=null; // { tipo, destinoLibre, items:[{name,qty,unit,cat,fuente,it
 let cfg={
   password:'LAB123',
   cats:['Reactivo','Colorante','Medio de cultivo','Material','Control','Otro'],
+  areas:['Química','Hematología','Inmunología','Microbiología','Especiales'],
   units:['Caja','Botella','Unidad','Paquete','Frasco','Tubo'],
   services:['Urgencias','UCI','Hospitalización','Cirugía','Pediatría','Ginecología','Consulta externa'],
   remisionServices:[], // servicios que activan pregunta de remisión
@@ -305,14 +308,20 @@ let cfg={
 let ST = {
   tab: localStorage.getItem('hdsr_lastTab')||'total',
   catFilter:'',
+  areaFilter:'',
   searchQ:'',
   sortBy:'name',
   statFilter:'',
   addLocked:true,
   adminUnlocked:false,
   pedidosUnlocked:false,
-  firstLoad:true
+  firstLoad:true,
+  logTypeFilter:'',
+  logDateFrom:'',
+  logDateTo:'',
+  logRangeMode:'mes'  // 'mes' | 'todo' | 'rango'
 };
+let logsRange=null; // resultados de una consulta por rango de fechas a Firestore directamente
 
 // ── UTILS ────────────────────────────────────────────────────────────────────
 const $  = id => document.getElementById(id);
@@ -338,7 +347,8 @@ function updateLockUI(){
 // ── FIREBASE ─────────────────────────────────────────────────────────────────
 async function loadCfg(){ try{ const s=await getDoc(doc(db,'config','app')); if(s.exists()) Object.assign(cfg,s.data()); }catch(e){} if(!cfg.services.includes('__devolucion')) cfg.services.push('__devolucion'); if(!cfg.services.includes('__prestamo')) cfg.services.push('__prestamo'); }
 async function saveCfg(){ try{ await setDoc(doc(db,'config','app'),cfg); }catch(e){} }
-async function addLog(type,text,detail=''){ try{ await addDoc(collection(db,'logs'),{type,text,detail,time:ts(),createdAt:serverTimestamp()}); }catch(e){} }
+async function addLog(type,text,detail='',mov=null){ try{ const payload={type,text,detail,time:ts(),createdAt:serverTimestamp()}; if(mov) payload.mov=mov; await addDoc(collection(db,'logs'),payload); }catch(e){} }
+const mkMov = (name,before,after) => ({name,before,after});
 
 // Timeout de seguridad: si Firebase no responde en 10s, mostrar error en vez de quedarse en "Conectando..."
 const _loadingTimeout = setTimeout(()=>{
@@ -369,7 +379,7 @@ onSnapshot(collection(db,'items'), snap=>{
   }
 });
 
-onSnapshot(query(collection(db,'logs'),orderBy('createdAt','desc'),limit(500)), snap=>{
+onSnapshot(query(collection(db,'logs'),orderBy('createdAt','desc'),limit(3000)), snap=>{
   logs=snap.docs.map(d=>({id:d.id,...d.data()})); if(ST.tab==='log') render();
 },()=>{});
 onSnapshot(query(collection(db,'pedidos'),orderBy('createdAt','desc')), snap=>{
@@ -473,6 +483,7 @@ function renderList(){
 function applyFilters(source){
   let r=[...source];
   if(ST.catFilter)  r=r.filter(i=>i.cat===ST.catFilter);
+  if(ST.areaFilter) r=r.filter(i=>(i.areas||[]).includes(ST.areaFilter));
   if(ST.statFilter==='bajo')    r=r.filter(i=>(i.almacen+i.lab)>0&&(i.almacen+i.lab)<=i.min);
   if(ST.statFilter==='agotado') r=r.filter(i=>!i.almacen&&!i.lab);
   if(ST.searchQ){ const q=norm(ST.searchQ); r=r.filter(i=>norm(i.name).includes(q)||norm(i.cat).includes(q)||norm(i.sinonimos).includes(q)); }
@@ -490,9 +501,13 @@ function searchBarHTML(ph='Buscar insumo...'){
   </div>`;
 }
 function filterBarHTML(){
+  const areasRow=(cfg.areas||[]).length?`<div class="filter-bar" style="margin-top:4px">
+    <button class="chip chip-area ${!ST.areaFilter?'active':''}" style="border-color:rgba(167,139,250,.4)" onclick="window._setArea('')">Áreas: Todas</button>
+    ${cfg.areas.map(a=>`<button class="chip chip-area ${ST.areaFilter===a?'active':''}" style="border-color:rgba(167,139,250,.4)" onclick="window._setArea('${a}')">${txt(a)}</button>`).join('')}
+  </div>`:'';
   return `<div class="filter-bar">
-    <button class="chip ${!ST.catFilter?'active':''}" onclick="window._setCat('')">Todos</button>
-    ${cfg.cats.map(c=>`<button class="chip ${ST.catFilter===c?'active':''}" onclick="window._setCat('${c}')">${txt(c)}</button>`).join('')}
+    <button class="chip chip-cat ${!ST.catFilter?'active':''}" onclick="window._setCat('')">Todos</button>
+    ${cfg.cats.map(c=>`<button class="chip chip-cat ${ST.catFilter===c?'active':''}" onclick="window._setCat('${c}')">${txt(c)}</button>`).join('')}
     <select class="sort-select" onchange="ST.sortBy=this.value;renderList()">
       <option value="name" ${ST.sortBy==='name'?'selected':''}>A-Z</option>
       <option value="stock" ${ST.sortBy==='stock'?'selected':''}>Mayor stock</option>
@@ -500,10 +515,11 @@ function filterBarHTML(){
       <option value="lab" ${ST.sortBy==='lab'?'selected':''}>Mayor laboratorio</option>
       <option value="uso" ${ST.sortBy==='uso'?'selected':''}>En uso</option>
     </select>
-  </div>`;
+  </div>${areasRow}`;
 }
 
-window._setCat = c => { ST.catFilter=c; renderList(); document.querySelectorAll('.chip').forEach(el=>{ el.classList.toggle('active', el.textContent.trim()===(c||'Todos')); }); };
+window._setCat = c => { ST.catFilter=c; renderList(); document.querySelectorAll('.chip-cat').forEach(el=>{ el.classList.toggle('active', el.textContent.trim()===(c||'Todos')); }); };
+window._setArea = a => { ST.areaFilter=a; renderList(); document.querySelectorAll('.chip-area').forEach(el=>{ el.classList.toggle('active', el.textContent.trim()===(a||'Áreas: Todas')); }); };
 window._setStatFilter = f => { ST.statFilter=ST.statFilter===f?'':f; render(); };
 
 // ── TOTAL ─────────────────────────────────────────────────────────────────────
@@ -639,7 +655,7 @@ function listLab(){
         ${labAgotado
           ? `<span class="badge b-zero" style="display:inline-flex">Stock: 0</span>`
           : `<span class="badge b-stock" style="display:inline-flex">Stock: ${stockLab}</span>`}
-        ${eu>0?`<br><span class="badge b-uso" style="display:inline-flex;margin-top:3px">En uso: ${eu}</span>`:''}
+        ${eu>0?`<br><button class="badge b-uso" style="margin-top:3px" onclick="event.stopPropagation();window.openM('verUsoItem','${item.id}')">En uso: ${eu}</button>`:''}
       </div>`;
     }
     h+=`<div class="row row-clickable" style="flex-wrap:wrap;align-items:flex-start" onclick="window.openItemDetail('${item.id}')">
@@ -733,7 +749,7 @@ function listPaila(){
         ${pailaAgotada
           ? `<span class="badge b-zero" style="display:inline-flex">Micro: 0</span>`
           : `<span class="badge b-paila" style="display:inline-flex">Paila: ${stockP}</span>`}
-        ${eu>0?`<br><span class="badge b-uso" style="display:inline-flex;margin-top:3px">En uso: ${eu}</span>`:''}
+        ${eu>0?`<br><button class="badge b-uso" style="margin-top:3px" onclick="event.stopPropagation();window.openM('verUsoItemPaila','${item.id}')">En uso: ${eu}</button>`:''}
         ${qtyCamino>0?`<br><span style="display:inline-flex;margin-top:3px;padding:2px 6px;border-radius:20px;font-size:10px;background:rgba(124,92,191,.18);color:#A78BFA"><i class="ti ti-truck" style="font-size:9px;margin-right:3px"></i>${qtyCamino} en camino</span>`:''}
       </div>`;
     }
@@ -813,10 +829,43 @@ function listUso(){
 }
 
 // ── MOVIMIENTOS ───────────────────────────────────────────────────────────────
+const LOG_META={
+  transfer:{icon:'→',color:'#00C9B1',bg:'rgba(0,201,177,.12)',bucket:'traslados'},
+  uso:{icon:'▶',color:'#F5A623',bg:'rgba(245,166,35,.12)',bucket:'usos'},
+  retiro:{icon:'■',color:'#7A9BB5',bg:'rgba(122,155,181,.1)',bucket:'usos'},
+  salida:{icon:'↑',color:'#E8484A',bg:'rgba(232,72,74,.12)',bucket:'salidas'},
+  ingreso:{icon:'↓',color:'#4CAF7D',bg:'rgba(76,175,125,.12)',bucket:'entradas'},
+  pedido:{icon:'🛒',color:'#A78BFA',bg:'rgba(167,139,250,.1)',bucket:'pedidos'},
+  nuevo:{icon:'+',color:'#00C9B1',bg:'rgba(0,201,177,.12)',bucket:'otros'},
+  edit:{icon:'✎',color:'#7A9BB5',bg:'rgba(122,155,181,.1)',bucket:'otros'},
+  delete:{icon:'✕',color:'#E8484A',bg:'rgba(232,72,74,.12)',bucket:'otros'}
+};
+const LOG_BUCKETS=[
+  {key:'',label:'Todos'},{key:'entradas',label:'Entradas'},{key:'salidas',label:'Salidas'},
+  {key:'usos',label:'Usos'},{key:'traslados',label:'Traslados'},{key:'pedidos',label:'Pedidos'},{key:'otros',label:'Otros'}
+];
+function logDate(e){
+  if(e.createdAt?.seconds) return new Date(e.createdAt.seconds*1000);
+  try{ const p=(e.time||'').split(', ')[0].split('/'); if(p.length===3) return new Date(+p[2],+p[1]-1,+p[0]); }catch{}
+  return null;
+}
+function renderMovLedger(mov){
+  const locs=[['almacen','Almacén','#7A9BB5'],['lab','Lab','#00C9B1'],['paila','Micro','#FFB347']];
+  const parts=[];
+  locs.forEach(([k,lbl,color])=>{
+    const b=mov.before?.[k], a=mov.after?.[k];
+    if(b===undefined||a===undefined||b===a) return;
+    const delta=a-b, ds=delta>0?`+${delta}`:`${delta}`, dc=delta>0?'#4CAF7D':'#E8484A';
+    parts.push(`<span style="color:${color}">${lbl}: ${b}→${a}</span> <span style="color:${dc};font-weight:600">(${ds})</span>`);
+  });
+  if(!parts.length) return '';
+  const tB=(mov.before?.almacen||0)+(mov.before?.lab||0)+(mov.before?.paila||0);
+  const tA=(mov.after?.almacen||0)+(mov.after?.lab||0)+(mov.after?.paila||0);
+  return `<div style="font-size:11px;color:#E8F4F2;margin-top:4px;padding:6px 8px;background:rgba(0,201,177,.05);border-left:2px solid rgba(0,201,177,.3);border-radius:4px;line-height:1.6">
+    ${parts.join('<br>')}<br><span style="color:#7A9BB5;font-size:10px">Total insumo: ${tB} → ${tA}</span>
+  </div>`;
+}
 function renderLog(){
-  const ICONS={transfer:'→',uso:'▶',salida:'↑',retiro:'■',nuevo:'+',edit:'✎',delete:'✕',ingreso:'↓',pedido:'🛒'};
-  const COLORS={transfer:'#00C9B1',uso:'#F5A623',salida:'#E8484A',retiro:'#7A9BB5',nuevo:'#00C9B1',edit:'#7A9BB5',delete:'#E8484A',ingreso:'#4CAF7D',pedido:'#A78BFA'};
-  const BGS={transfer:'rgba(0,201,177,.12)',uso:'rgba(245,166,35,.12)',salida:'rgba(232,72,74,.12)',retiro:'rgba(122,155,181,.1)',nuevo:'rgba(0,201,177,.12)',edit:'rgba(122,155,181,.1)',delete:'rgba(232,72,74,.12)',ingreso:'rgba(76,175,125,.12)',pedido:'rgba(167,139,250,.1)'};
   const consumo={};
   logs.forEach(e=>{
     if(e.type==='salida'||e.type==='uso'){
@@ -847,30 +896,72 @@ function renderLog(){
       </div>`
     :`<div style="margin-bottom:10px" class="no-print"><button class="btn btn-ghost btn-sm" onclick="window.requireAdmin(()=>{ST.adminUnlocked=true;render();})"><i class="ti ti-lock"></i> Gestionar movimientos</button></div>`;
 
-  return `${statsH}<div class="sec-title" style="margin-top:${meses.length?'8px':'2px'}">Registro de movimientos</div>${adminCtrl}
+  const rangeCtrl=`<div class="filter-bar" style="margin-bottom:6px">
+    <button class="chip ${ST.logRangeMode==='mes'?'active':''}" onclick="window._setLogRange('mes')">Último mes</button>
+    <button class="chip ${ST.logRangeMode==='todo'?'active':''}" onclick="window._setLogRange('todo')">Todo lo cargado</button>
+    <button class="chip ${ST.logRangeMode==='rango'?'active':''}" onclick="window._setLogRange('rango')">Rango de fechas</button>
+  </div>
+  ${ST.logRangeMode==='rango'?`<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+    <input type="date" id="logDesde" value="${ST.logDateFrom}" style="background:#0F1923;border:1px solid #2E4560;border-radius:6px;padding:6px 8px;color:#E8F4F2;font-size:12px">
+    <span style="color:#7A9BB5;font-size:12px">a</span>
+    <input type="date" id="logHasta" value="${ST.logDateTo}" style="background:#0F1923;border:1px solid #2E4560;border-radius:6px;padding:6px 8px;color:#E8F4F2;font-size:12px">
+    <button class="btn btn-accent btn-sm" onclick="window.cargarRangoLogs()"><i class="ti ti-search"></i> Buscar</button>
+  </div>`:''}
+  <div class="filter-bar" style="margin-bottom:10px">
+    ${LOG_BUCKETS.map(b=>`<button class="chip ${ST.logTypeFilter===b.key?'active':''}" onclick="window._setLogType('${b.key}')">${txt(b.label)}</button>`).join('')}
+  </div>`;
+
+  return `${statsH}<div class="sec-title" style="margin-top:${meses.length?'8px':'2px'}">Registro de movimientos</div>${rangeCtrl}${adminCtrl}
   ${searchBarHTML('Buscar en movimientos...')}<div id="itemList">${listLog()}</div>`;
 }
 function listLog(){
-  const ICONS={transfer:'→',uso:'▶',salida:'↑',retiro:'■',nuevo:'+',edit:'✎',delete:'✕',ingreso:'↓',pedido:'🛒'};
-  const COLORS={transfer:'#00C9B1',uso:'#F5A623',salida:'#E8484A',retiro:'#7A9BB5',nuevo:'#00C9B1',edit:'#7A9BB5',delete:'#E8484A',ingreso:'#4CAF7D',pedido:'#A78BFA'};
-  const BGS={transfer:'rgba(0,201,177,.12)',uso:'rgba(245,166,35,.12)',salida:'rgba(232,72,74,.12)',retiro:'rgba(122,155,181,.1)',nuevo:'rgba(0,201,177,.12)',edit:'rgba(122,155,181,.1)',delete:'rgba(232,72,74,.12)',ingreso:'rgba(76,175,125,.12)',pedido:'rgba(167,139,250,.1)'};
-  const q=ST.searchQ.toLowerCase();
-  const vis=q?logs.filter(e=>norm(e.text).includes(norm(q))||norm(e.detail).includes(norm(q))):logs;
+  const q=norm(ST.searchQ);
+  let source = (ST.logRangeMode==='rango' && logsRange) ? logsRange : logs;
+  let vis=[...source];
+  if(ST.logRangeMode==='mes'){
+    const limite=new Date(); limite.setDate(limite.getDate()-30);
+    vis=vis.filter(e=>{ const d=logDate(e); return d? d>=limite : true; });
+  }
+  if(ST.logTypeFilter){
+    vis=vis.filter(e=>(LOG_META[e.type]?.bucket||'otros')===ST.logTypeFilter);
+  }
+  if(q){
+    vis=vis.filter(e=>norm(e.text).includes(q)||norm(e.detail).includes(q)||norm(e.mov?.name).includes(q));
+  }
   if(!vis.length) return `<div class="empty"><i class="ti ti-history"></i><span>Sin movimientos${q?' que coincidan':''}</span></div>`;
   let h=`<div class="card"><div class="card-body">`;
   vis.forEach(e=>{
+    const meta=LOG_META[e.type]||{icon:'·',color:'#7A9BB5',bg:'rgba(122,155,181,.1)'};
     const delBtn=ST.adminUnlocked?`<button class="btn btn-ghost btn-sm no-print" onclick="window.borrarLog('${e.id}')" title="Eliminar"><i class="ti ti-trash" style="color:#E8484A"></i></button>`:'';
+    const ledger=e.mov?renderMovLedger(e.mov):'';
     h+=`<div class="log-entry">
-      <div class="log-icon" style="background:${BGS[e.type]||'rgba(122,155,181,.1)'}"><span style="color:${COLORS[e.type]||'#7A9BB5'}">${ICONS[e.type]||'·'}</span></div>
+      <div class="log-icon" style="background:${meta.bg}"><span style="color:${meta.color}">${meta.icon}</span></div>
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;color:#E8F4F2">${txt(e.text)}</div>
         ${e.detail?`<div style="font-size:11px;color:#7A9BB5;margin-top:1px">${txt(e.detail)}</div>`:''}
+        ${ledger}
         <div style="font-size:10px;color:#7A9BB5;margin-top:1px">${e.time||''}</div>
       </div>${delBtn}
     </div>`;
   });
   return h+`</div></div>`;
 }
+window._setLogRange=(mode)=>{ ST.logRangeMode=mode; if(mode!=='rango') logsRange=null; render(); };
+window._setLogType=(t)=>{ ST.logTypeFilter=t; render(); };
+window.cargarRangoLogs=async()=>{
+  const desde=$('logDesde')?.value, hasta=$('logHasta')?.value;
+  if(!desde||!hasta){alert('Selecciona ambas fechas');return;}
+  ST.logDateFrom=desde; ST.logDateTo=hasta;
+  const dFrom=new Date(desde+'T00:00:00');
+  const dTo=new Date(hasta+'T23:59:59');
+  try{
+    const snap=await getDocs(query(collection(db,'logs'),where('createdAt','>=',dFrom),where('createdAt','<=',dTo),orderBy('createdAt','desc')));
+    logsRange=snap.docs.map(d=>({id:d.id,...d.data()}));
+  }catch(e){
+    logsRange=logs.filter(l=>{ const d=logDate(l); return d&&d>=dFrom&&d<=dTo; });
+  }
+  render();
+};
 
 // ── PEDIDOS ───────────────────────────────────────────────────────────────────
 function renderPedidos(){
@@ -1069,6 +1160,15 @@ window.checkAdminPap=()=>{
 // ── MODALES ───────────────────────────────────────────────────────────────────
 function catsOpts(sel=''){ return cfg.cats.map(c=>`<option ${c===sel?'selected':''}>${c}</option>`).join(''); }
 function unitsOpts(sel=''){ return cfg.units.map(u=>`<option ${u===sel?'selected':''}>${u}</option>`).join(''); }
+function areasCheckboxes(selArr=[]){
+  return (cfg.areas||[]).map((a,i)=>{
+    const checked=(selArr||[]).includes(a);
+    return `<label style="display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer">
+      <input type="checkbox" class="m-area-chk" value="${txt(a)}" ${checked?'checked':''} style="width:15px;height:15px;cursor:pointer;accent-color:#00C9B1">
+      <span style="font-size:12px;color:#E8F4F2">${txt(a)}</span>
+    </label>`;
+  }).join('');
+}
 function servicesOpts(){
   const list=[...(cfg.services||[])];
   if(!list.includes('__devolucion')) list.push('__devolucion');
@@ -1085,6 +1185,7 @@ window.openM=(type,...args)=>{
       <h3><i class="ti ti-plus" style="color:#00C9B1"></i>Nuevo insumo</h3>
       <div class="field"><label>Nombre</label><input id="m-name" autofocus autocomplete="off"></div>
       <div class="field"><label>Categoría</label><select id="m-cat">${catsOpts()}</select></div>
+      <div class="field"><label>Área(s) / Especialidad(es)</label><div style="max-height:140px;overflow-y:auto;background:#0F1923;border:1px solid #2E4560;border-radius:6px;padding:6px 10px">${areasCheckboxes()}</div></div>
       <div class="field"><label>Presentación / Unidad</label><select id="m-unit">${unitsOpts()}</select></div>
       <div class="field"><label>Stock almacén inicial</label><input id="m-qty" type="number" min="0" value="0"></div>
       <div class="field"><label>Alerta mínimo de stock</label><input id="m-min" type="number" min="0" value="2"></div>
@@ -1098,6 +1199,7 @@ window.openM=(type,...args)=>{
       <h3><i class="ti ti-edit" style="color:#00C9B1"></i>Editar · ${txt(item.name)}</h3>
       <div class="field"><label>Nombre</label><input id="m-name" value="${txt(item.name)}" autocomplete="off"></div>
       <div class="field"><label>Categoría</label><select id="m-cat">${catsOpts(item.cat)}</select></div>
+      <div class="field"><label>Área(s) / Especialidad(es)</label><div style="max-height:140px;overflow-y:auto;background:#0F1923;border:1px solid #2E4560;border-radius:6px;padding:6px 10px">${areasCheckboxes(item.areas)}</div></div>
       <div class="field"><label>Presentación / Unidad</label><select id="m-unit">${unitsOpts(item.unit)}</select></div>
       <div class="field"><label>Stock almacén</label><input id="m-almacen" type="number" min="0" value="${item.almacen}"></div>
       <div class="field"><label>Stock laboratorio</label><input id="m-lab" type="number" min="0" value="${item.lab}"></div>
@@ -1107,7 +1209,7 @@ window.openM=(type,...args)=>{
       <div class="modal-actions">
         <button class="btn btn-danger btn-sm" onclick="window.openM('delete','${item.id}')"><i class="ti ti-trash"></i></button>
         <button class="btn btn-ghost" onclick="closeM()">Cancelar</button>
-        <button class="btn btn-accent" onclick="window.doEdit('${item.id}',${item.almacen},${item.lab})"><i class="ti ti-check"></i> Guardar</button>
+        <button class="btn btn-accent" onclick="window.doEdit('${item.id}',${item.almacen},${item.lab},${item.paila||0})"><i class="ti ti-check"></i> Guardar</button>
       </div>
     </div></div>`;
 
@@ -1212,6 +1314,30 @@ window.openM=(type,...args)=>{
         <button class="btn btn-ghost" onclick="closeM()">Cancelar</button>
         <button class="btn btn-accent btn-sm" onclick="window.doLabToPailaDirecto('${item.id}',${stockLab},${stockP},'${txt(item.unit)}','${txt(item.name)}')"><i class="ti ti-check"></i> Confirmar ingreso</button>
       </div>
+    </div></div>`;
+
+  } else if(type==='verUsoItem'){
+    if(!item) return;
+    const usos=item.usoItems||[];
+    const rows=usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1} · ${txt(item.name)}</div><div class="item-sub">Desde: ${u.since||''}</div></div>
+      <button class="btn btn-danger btn-sm" onclick="window.retirarUso('${item.id}','${u.id}');closeM()"><i class="ti ti-door-exit"></i> Dar salida</button></div>`).join('');
+    area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
+      <h3><i class="ti ti-player-play" style="color:#F5A623"></i>En uso · ${txt(item.name)}</h3>
+      <div class="info-box" style="margin-bottom:10px">Stock lab: <b style="color:#00C9B1">${item.lab}</b> · En uso: <b style="color:#F5A623">${usos.length}</b></div>
+      <div class="card"><div class="card-body">${rows||'<div style="padding:10px;color:#7A9BB5;font-size:12px">Sin unidades en uso</div>'}</div></div>
+      <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cerrar</button></div>
+    </div></div>`;
+
+  } else if(type==='verUsoItemPaila'){
+    if(!item) return;
+    const usos=item.pailaUsoItems||[];
+    const rows=usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1} · ${txt(item.name)}</div><div class="item-sub">Desde: ${u.since||''}</div></div>
+      <button class="btn btn-danger btn-sm" onclick="window.retirarUsoPaila('${item.id}','${u.id}');closeM()"><i class="ti ti-door-exit"></i> Dar salida</button></div>`).join('');
+    area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
+      <h3><i class="ti ti-player-play" style="color:#F5A623"></i>En uso (Micro) · ${txt(item.name)}</h3>
+      <div class="info-box" style="margin-bottom:10px">Stock Micro: <b style="color:#FFB347">${item.paila||0}</b> · En uso: <b style="color:#F5A623">${usos.length}</b></div>
+      <div class="card"><div class="card-body">${rows||'<div style="padding:10px;color:#7A9BB5;font-size:12px">Sin unidades en uso</div>'}</div></div>
+      <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cerrar</button></div>
     </div></div>`;
 
   } else if(type==='usar'){
@@ -1573,9 +1699,9 @@ window.openUsoConfirmFullById=(id)=>{ const item=items.find(i=>i.id===id); if(it
 function doPonerEnUso(item){
   if(typeof item==='string') item=items.find(i=>i.id===item);
   if(!item||item.lab<=0){alert('Sin stock en laboratorio');return;}
-  const uid=genId();
+  const uid=genId(); const prevL=item.lab;
   updateDoc(doc(db,'items',item.id),{usoItems:[...(item.usoItems||[]),{id:uid,name:item.name,since:ts()}],lab:item.lab-1})
-    .then(()=>addLog('uso',`En uso: ${item.name}`,`1 ${item.unit}`));
+    .then(()=>addLog('uso',`En uso: ${item.name}`,`1 ${item.unit}`,mkMov(item.name,{lab:prevL},{lab:prevL-1})));
   closeM();
 }
 window.doPonerEnUso=(id)=>{ const item=items.find(i=>i.id===id); if(item) doPonerEnUso(item); };
@@ -1583,7 +1709,7 @@ window.retirarUso=async(itemId,usoId)=>{
   const item=items.find(i=>i.id===itemId); if(!item) return;
   const u=item.usoItems?.find(x=>x.id===usoId); if(!u) return;
   await updateDoc(doc(db,'items',itemId),{usoItems:item.usoItems.filter(x=>x.id!==usoId)});
-  await addLog('retiro',`Retirado de uso: ${item.name}`,`Desde ${u.since}`);
+  await addLog('retiro',`Retirado de uso: ${item.name}`,`Desde ${u.since}`,mkMov(item.name,{lab:item.lab},{lab:item.lab}));
 };
 window.doReemplazarUso=(itemId,usoId)=>{
   const item=items.find(i=>i.id===itemId); if(!item||item.lab<=0){closeM();alert('Sin stock');return;}
@@ -1602,9 +1728,9 @@ window.doRetirarTodosYUsar=(itemId)=>{
 // ── PAILA: uso ────────────────────────────────────────────────────────────────
 function doPonerEnUsoPaila(item){
   if(!item||(item.paila||0)<=0){alert('Sin stock en La Paila');return;}
-  const uid=genId();
+  const uid=genId(); const prevP=item.paila||0;
   updateDoc(doc(db,'items',item.id),{pailaUsoItems:[...(item.pailaUsoItems||[]),{id:uid,name:item.name,since:ts()}],paila:(item.paila||0)-1})
-    .then(()=>addLog('uso',`En uso (Micro): ${item.name}`,`1 ${item.unit}`));
+    .then(()=>addLog('uso',`En uso (Micro): ${item.name}`,`1 ${item.unit}`,mkMov(item.name,{paila:prevP},{paila:prevP-1})));
   closeM();
 }
 window._ponerEnUsoPailaById=(itemId)=>{
@@ -1615,7 +1741,7 @@ window.retirarUsoPaila=async(itemId,usoId)=>{
   const item=items.find(i=>i.id===itemId); if(!item) return;
   const u=item.pailaUsoItems?.find(x=>x.id===usoId); if(!u) return;
   await updateDoc(doc(db,'items',itemId),{pailaUsoItems:item.pailaUsoItems.filter(x=>x.id!==usoId)});
-  await addLog('retiro',`Retirado de uso (Micro): ${item.name}`,`Desde ${u.since}`);
+  await addLog('retiro',`Retirado de uso (Micro): ${item.name}`,`Desde ${u.since}`,mkMov(item.name,{paila:item.paila||0},{paila:item.paila||0}));
 };
 window.doReemplazarUsoPaila=(itemId,usoId)=>{
   const item=items.find(i=>i.id===itemId); if(!item||(item.paila||0)<=0){closeM();alert('Sin stock en Paila');return;}
@@ -1714,27 +1840,31 @@ window.imprimirPedido=(id)=>{
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 window.doAdd=async()=>{
   const name=$('m-name')?.value.trim(); if(!name){alert('Escribe el nombre del insumo');return;}
-  await addDoc(collection(db,'items'),{name,cat:$('m-cat').value,unit:$('m-unit').value,almacen:parseInt($('m-qty').value)||0,lab:0,usoItems:[],min:parseInt($('m-min').value)||2,_pedidoPendiente:false,sinonimos:$('m-sin')?.value.trim()||''});
+  const areasSel=[...document.querySelectorAll('.m-area-chk:checked')].map(c=>c.value);
+  await addDoc(collection(db,'items'),{name,cat:$('m-cat').value,unit:$('m-unit').value,almacen:parseInt($('m-qty').value)||0,lab:0,usoItems:[],min:parseInt($('m-min').value)||2,_pedidoPendiente:false,sinonimos:$('m-sin')?.value.trim()||'',areas:areasSel});
   await addLog('nuevo',`Insumo creado: ${name}`,`Almacén inicial: ${parseInt($('m-qty').value)||0} ${$('m-unit').value}`);
   closeM();
 };
-window.doEdit=async(id,prevA,prevL)=>{
+window.doEdit=async(id,prevA,prevL,prevP=0)=>{
   const name=$('m-name')?.value.trim(); if(!name) return;
-  await updateDoc(doc(db,'items',id),{name,cat:$('m-cat').value,unit:$('m-unit').value,almacen:parseInt($('m-almacen').value)||0,lab:parseInt($('m-lab').value)||0,paila:parseInt($('m-paila').value)||0,min:parseInt($('m-min').value)||2,sinonimos:$('m-sin')?.value.trim()||''});
-  await addLog('edit',`Editado: ${name}`,`Almacén: ${prevA}→${parseInt($('m-almacen').value)||0}, Laboratorio: ${prevL}→${parseInt($('m-lab').value)||0}`);
+  const areasSelEdit=[...document.querySelectorAll('.m-area-chk:checked')].map(c=>c.value);
+  const newA=parseInt($('m-almacen').value)||0, newL=parseInt($('m-lab').value)||0, newP=parseInt($('m-paila').value)||0;
+  await updateDoc(doc(db,'items',id),{name,cat:$('m-cat').value,unit:$('m-unit').value,almacen:newA,lab:newL,paila:newP,min:parseInt($('m-min').value)||2,sinonimos:$('m-sin')?.value.trim()||'',areas:areasSelEdit});
+  await addLog('edit',`Editado: ${name}`,`Almacén: ${prevA}→${newA}, Laboratorio: ${prevL}→${newL}`,mkMov(name,{almacen:prevA,lab:prevL,paila:prevP},{almacen:newA,lab:newL,paila:newP}));
   closeM();
 };
 window.doIngreso=async(id,from,prevA,prevL,unit,name,prevP=0)=>{
   const qty=parseInt($('m-qty')?.value)||0; if(qty<=0){alert('Cantidad inválida');return;}
   const origen=$('m-origen')?.value||'';
   if(!origen){alert('Selecciona de dónde viene el insumo');return;}
+  const B0={almacen:prevA,lab:prevL,paila:prevP};
   if(origen==='prestamo'){
     const entidad=$('m-prestamo-ent')?.value.trim();
     if(!entidad){alert('Escribe quién nos presta el insumo');return;}
     const upd=from==='lab'?{lab:prevL+qty}:from==='paila'?{paila:prevP+qty}:{almacen:prevA+qty};
     await updateDoc(doc(db,'items',id),upd);
     await addDoc(collection(db,'prestamos'),{insumo:name,qty,unit,entidad,tipo:'recibido',itemId:id,obs:'Registrado desde ingreso',estado:'activo',fecha:tsDate(),createdAt:serverTimestamp()});
-    await addLog('ingreso',`Ingreso por préstamo de ${entidad}: ${name}`,`+${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso por préstamo de ${entidad}: ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,...upd}));
     closeM();
     window.setTabDirect('prestamos');
     return;
@@ -1749,7 +1879,7 @@ window.doIngreso=async(id,from,prevA,prevL,unit,name,prevP=0)=>{
       quien=pr?.entidad||'';
       await updateDoc(doc(db,'prestamos',prId),{estado:'devuelto',devueltoEn:ts()}).catch(()=>{});
     }
-    await addLog('ingreso',`Nos regresaron${quien?` (${quien})`:''}: ${name}`,`+${qty} ${unit}`);
+    await addLog('ingreso',`Nos regresaron${quien?` (${quien})`:''}: ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,...upd}));
     closeM();
     if(prId) window.setTabDirect('prestamos');
     return;
@@ -1757,30 +1887,30 @@ window.doIngreso=async(id,from,prevA,prevL,unit,name,prevP=0)=>{
   if(from==='lab'&&origen==='almacen'){
     if(prevA<qty){alert(`Solo hay ${prevA} ${unit} en almacén`);return;}
     await updateDoc(doc(db,'items',id),{almacen:prevA-qty,lab:prevL+qty});
-    await addLog('ingreso',`Ingreso al laboratorio desde almacén: ${name}`,`${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso al laboratorio desde almacén: ${name}`,`${qty} ${unit}`,mkMov(name,B0,{...B0,almacen:prevA-qty,lab:prevL+qty}));
   } else if(from==='lab'&&origen==='farmacia'){
     await updateDoc(doc(db,'items',id),{lab:prevL+qty});
-    await addLog('ingreso',`Ingreso al laboratorio desde farmacia: ${name}`,`+${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso al laboratorio desde farmacia: ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,lab:prevL+qty}));
   } else if(from==='lab'){
     await updateDoc(doc(db,'items',id),{lab:prevL+qty});
-    await addLog('ingreso',`Ingreso al laboratorio (casa comercial): ${name}`,`+${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso al laboratorio (casa comercial): ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,lab:prevL+qty}));
   } else if(from==='paila'&&origen==='almacen'){
     if(prevA<qty){alert(`Solo hay ${prevA} ${unit} en almacén`);return;}
     await updateDoc(doc(db,'items',id),{almacen:prevA-qty,paila:prevP+qty});
-    await addLog('ingreso',`Ingreso a Microbiología desde almacén: ${name}`,`${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso a Microbiología desde almacén: ${name}`,`${qty} ${unit}`,mkMov(name,B0,{...B0,almacen:prevA-qty,paila:prevP+qty}));
   } else if(from==='paila'&&origen==='farmacia'){
     await updateDoc(doc(db,'items',id),{paila:prevP+qty});
-    await addLog('ingreso',`Ingreso a Microbiología desde farmacia: ${name}`,`+${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso a Microbiología desde farmacia: ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,paila:prevP+qty}));
   } else if(from==='paila'&&origen==='lab'){
     if(prevL<qty){alert(`Solo hay ${prevL} ${unit} en laboratorio`);return;}
     await updateDoc(doc(db,'items',id),{lab:prevL-qty,paila:prevP+qty});
-    await addLog('ingreso',`Ingreso a Microbiología desde laboratorio: ${name}`,`${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso a Microbiología desde laboratorio: ${name}`,`${qty} ${unit}`,mkMov(name,B0,{...B0,lab:prevL-qty,paila:prevP+qty}));
   } else if(from==='paila'){
     await updateDoc(doc(db,'items',id),{paila:prevP+qty});
-    await addLog('ingreso',`Ingreso a Microbiología (casa comercial): ${name}`,`+${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso a Microbiología (casa comercial): ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,paila:prevP+qty}));
   } else {
     await updateDoc(doc(db,'items',id),{almacen:prevA+qty});
-    await addLog('ingreso',`Ingreso al almacén: ${name}`,`+${qty} ${unit}`);
+    await addLog('ingreso',`Ingreso al almacén: ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,almacen:prevA+qty}));
   }
   closeM();
 };
@@ -1794,6 +1924,7 @@ window.doSalida=async(id,from,almacen,lab,unit,name,paila=0)=>{
   const selDest=$('m-dest')?.value, destOtro=$('m-dest-otro')?.value.trim();
   const avail=from==='almacen'?almacen:from==='paila'?paila:lab;
   if(qty<=0||qty>avail){alert('Cantidad no válida');return;}
+  const B0={almacen,lab,paila};
   if(selDest==='__prestamo'){
     const entidad=$('m-pre-sal-ent')?.value.trim();
     const obs=$('m-pre-sal-obs')?.value.trim()||'';
@@ -1801,7 +1932,7 @@ window.doSalida=async(id,from,almacen,lab,unit,name,paila=0)=>{
     const upd=from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty};
     await updateDoc(doc(db,'items',id),upd);
     await addDoc(collection(db,'prestamos'),{insumo:name,qty,unit,entidad,tipo:'prestado',itemId:id,obs:obs||'Registrado desde salida',estado:'activo',fecha:tsDate(),createdAt:serverTimestamp()});
-    await addLog('salida',`Préstamo entregado a ${entidad}: ${name}`,`${qty} ${unit}`);
+    await addLog('salida',`Préstamo entregado a ${entidad}: ${name}`,`${qty} ${unit}`,mkMov(name,B0,{...B0,...upd}));
     closeM();
     window.setTabDirect('prestamos');
     return;
@@ -1817,7 +1948,7 @@ window.doSalida=async(id,from,almacen,lab,unit,name,paila=0)=>{
     await updateDoc(doc(db,'items',id),upd);
     await addDoc(collection(db,'devoluciones'),{insumo:name,qty,unit,entidad,motivo,obs:'Registrada desde salida',prestamoId:prId||null,fecha:tsDate(),hora:new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),createdAt:serverTimestamp()});
     if(prId){ await updateDoc(doc(db,'prestamos',prId),{estado:'devuelto',devueltoEn:ts()}).catch(()=>{}); }
-    await addLog('salida',`Devolución a ${entidad}: ${name}`,`${qty} ${unit} · ${motivo}`);
+    await addLog('salida',`Devolución a ${entidad}: ${name}`,`${qty} ${unit} · ${motivo}`,mkMov(name,B0,{...B0,...upd}));
     closeM();
     window.setTabDirect('prestamos');
     return;
@@ -1827,7 +1958,7 @@ window.doSalida=async(id,from,almacen,lab,unit,name,paila=0)=>{
   const upd=from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty};
   await updateDoc(doc(db,'items',id),upd);
   const lugar=from==='almacen'?'almacén':from==='paila'?'La Paila':'laboratorio';
-  await addLog('salida',`Salida: ${name}`,`${qty} ${unit} → ${dest} (${lugar})`);
+  await addLog('salida',`Salida: ${name}`,`${qty} ${unit} → ${dest} (${lugar})`,mkMov(name,B0,{...B0,...upd}));
   // Guardar en colección de salidas para historial y estadísticas
   await addDoc(collection(db,'salidas'),{
     name,qty,unit,dest,desde:lugar,
@@ -1849,7 +1980,7 @@ window.doLabToPaila=async(id,prevL,prevP,unit,name)=>{
   // Restar del lab inmediatamente, pero NO sumar a paila — queda en tránsito
   await updateDoc(doc(db,'items',id),{lab:prevL-qty});
   await addDoc(collection(db,'enCamino'),{itemId:id,name,qty,unit,desde:ts(),createdAt:serverTimestamp()});
-  await addLog('transfer',`${name}: laboratorio → En camino a Microbiología`,`${qty} ${unit}`);
+  await addLog('transfer',`${name}: laboratorio → En camino a Microbiología`,`${qty} ${unit}`,mkMov(name,{lab:prevL,paila:prevP},{lab:prevL-qty,paila:prevP}));
   closeM();
   // Preguntar si agrega a remisiones (traslado permanente a Microbiología)
   const itm=items.find(i=>i.id===id);
@@ -1861,7 +1992,7 @@ window.doLabToPailaDirecto=async(id,prevL,prevP,unit,name)=>{
   if(qty<=0||qty>prevL){alert('Cantidad no válida');return;}
   // Suma directo al stock de la paila (ya está físicamente allá)
   await updateDoc(doc(db,'items',id),{lab:prevL-qty,paila:prevP+qty});
-  await addLog('transfer',`${name}: laboratorio → Microbiología (ingreso directo)`,`${qty} ${unit}`);
+  await addLog('transfer',`${name}: laboratorio → Microbiología (ingreso directo)`,`${qty} ${unit}`,mkMov(name,{lab:prevL,paila:prevP},{lab:prevL-qty,paila:prevP+qty}));
   closeM();
   const itm=items.find(i=>i.id===id);
   openM('preguntarRemisionPaila',id,{qty,unit,name,cat:itm?.cat||''});
@@ -1884,12 +2015,13 @@ window._abrirConfirmFullPaila=(id)=>{
 window.doConfirmarRecepcionPaila=async(enCaminoId)=>{
   const ec=enCamino.find(e=>e.id===enCaminoId); if(!ec) return;
   const it=items.find(i=>i.id===ec.itemId);
+  const movData=it?mkMov(ec.name,{paila:it.paila||0},{paila:(it.paila||0)+ec.qty}):null;
   if(it){
     await updateDoc(doc(db,'items',ec.itemId),{paila:(it.paila||0)+ec.qty});
   }
   // Si el insumo ya fue eliminado, solo borramos el registro en camino
   await deleteDoc(doc(db,'enCamino',enCaminoId));
-  await addLog('transfer',`${ec.name}: confirmada recepción en Microbiología${!it?' (insumo eliminado del inventario)':''}`,`${ec.qty} ${ec.unit}`);
+  await addLog('transfer',`${ec.name}: confirmada recepción en Microbiología${!it?' (insumo eliminado del inventario)':''}`,`${ec.qty} ${ec.unit}`,movData);
 };
 
 window.doRechazarEnCamino=async(enCaminoId)=>{
@@ -1898,7 +2030,7 @@ window.doRechazarEnCamino=async(enCaminoId)=>{
   const it=items.find(i=>i.id===ec.itemId);
   if(it){
     await updateDoc(doc(db,'items',ec.itemId),{lab:(it.lab||0)+ec.qty});
-    await addLog('transfer',`${ec.name}: devuelto al laboratorio (no recibido en Micro)`,`${ec.qty} ${ec.unit}`);
+    await addLog('transfer',`${ec.name}: devuelto al laboratorio (no recibido en Micro)`,`${ec.qty} ${ec.unit}`,mkMov(ec.name,{lab:it.lab||0},{lab:(it.lab||0)+ec.qty}));
   }
   // Si el insumo fue eliminado, solo borramos el registro
   await deleteDoc(doc(db,'enCamino',enCaminoId));
@@ -2741,6 +2873,17 @@ window.openUserModal=(type)=>{
         <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cerrar</button></div>
       </div></div>`;
     });
+  } else if(type==='areas'){
+    requireAdmin(()=>{
+      const listH=()=>(cfg.areas||[]).map((a,i)=>`<div class="tag">${txt(a)}<button onclick="window.removeArea(${i})">✕</button></div>`).join('');
+      area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
+        <h3><i class="ti ti-flask-2" style="color:#A78BFA"></i>Áreas / Especialidades</h3>
+        <p style="color:#7A9BB5;font-size:11px;margin-bottom:8px">Un insumo puede pertenecer a varias áreas (Química, Hematología, Inmunología...) para poder filtrar por área.</p>
+        <div class="tag-list" id="areaList">${listH()}</div>
+        <div style="display:flex;gap:6px"><input id="newArea" placeholder="Nueva área" class="search" style="margin:0" autocomplete="off" onkeydown="if(event.key==='Enter')window.addArea()"><button class="btn btn-accent btn-sm" onclick="window.addArea()"><i class="ti ti-plus"></i> Agregar</button></div>
+        <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cerrar</button></div>
+      </div></div>`;
+    });
   } else if(type==='units'){
     requireAdmin(()=>{
       area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
@@ -2865,6 +3008,8 @@ window.guardarPass=async()=>{
 
 window.removeCat=async(i)=>{ cfg.cats.splice(i,1); await saveCfg(); $('catList').innerHTML=cfg.cats.map((c,j)=>`<div class="tag">${txt(c)}<button onclick="window.removeCat(${j})">✕</button></div>`).join(''); };
 window.addCat=async()=>{ const v=$('newCat')?.value.trim(); if(!v) return; cfg.cats.push(v); await saveCfg(); $('newCat').value=''; $('catList').innerHTML=cfg.cats.map((c,j)=>`<div class="tag">${txt(c)}<button onclick="window.removeCat(${j})">✕</button></div>`).join(''); };
+window.removeArea=async(i)=>{ if(!cfg.areas) cfg.areas=[]; cfg.areas.splice(i,1); await saveCfg(); $('areaList').innerHTML=cfg.areas.map((a,j)=>`<div class="tag">${txt(a)}<button onclick="window.removeArea(${j})">✕</button></div>`).join(''); };
+window.addArea=async()=>{ const v=$('newArea')?.value.trim(); if(!v) return; if(!cfg.areas) cfg.areas=[]; cfg.areas.push(v); await saveCfg(); $('newArea').value=''; $('areaList').innerHTML=cfg.areas.map((a,j)=>`<div class="tag">${txt(a)}<button onclick="window.removeArea(${j})">✕</button></div>`).join(''); };
 window.removeUnit=async(i)=>{ cfg.units.splice(i,1); await saveCfg(); $('unitList').innerHTML=cfg.units.map((u,j)=>`<div class="tag">${txt(u)}<button onclick="window.removeUnit(${j})">✕</button></div>`).join(''); };
 window.addUnit=async()=>{ const v=$('newUnit')?.value.trim(); if(!v) return; cfg.units.push(v); await saveCfg(); $('newUnit').value=''; $('unitList').innerHTML=cfg.units.map((u,j)=>`<div class="tag">${txt(u)}<button onclick="window.removeUnit(${j})">✕</button></div>`).join(''); };
 window.moveSvc=async(i,dir)=>{
