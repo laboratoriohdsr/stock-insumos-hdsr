@@ -84,9 +84,9 @@ html,body{background:#EEF2F6;color:#16202B;font-family:system-ui,-apple-system,s
 .conn-dot{width:6px;height:6px;border-radius:50%;background:#E8484A;transition:background .4s;flex-shrink:0}
 .conn-dot.ok{background:#4CAF7D}
 .topbar-right{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-.lock-btn{display:flex;align-items:center;gap:5px;background:#F1F5F9;border:1px solid #D7DEE6;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;color:#16202B;transition:border-color .2s;border:none}
-.lock-btn.locked{border:1px solid #E8484A;color:#E8484A}
-.lock-btn.unlocked{border:1px solid #4CAF7D;color:#4CAF7D}
+.lock-btn{display:flex;align-items:center;gap:5px;background:#F1F5F9;border:1px solid #D7DEE6;border-radius:8px;padding:6px 11px;cursor:pointer;font-size:12px;color:#16202B;transition:all .15s}
+.lock-btn.locked{background:rgba(232,72,74,.08);border:1px solid rgba(232,72,74,.3);color:#E8484A}
+.lock-btn.unlocked{background:rgba(76,175,125,.1);border:1px solid rgba(76,175,125,.3);color:#4CAF7D}
 .user-btn{display:flex;align-items:center;gap:6px;background:#F1F5F9;border:1px solid #D7DEE6;border-radius:8px;padding:5px 10px;cursor:pointer;position:relative}
 .user-btn:hover{border-color:#00C9B1}
 .user-avatar{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#00C9B1,#7C5CBF);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0F1923;flex-shrink:0}
@@ -104,7 +104,7 @@ html,body{background:#EEF2F6;color:#16202B;font-family:system-ui,-apple-system,s
 .btn{display:inline-flex;align-items:center;gap:4px;padding:5px 11px;border-radius:6px;border:none;font-size:12px;cursor:pointer;font-weight:500;line-height:1.3;transition:opacity .15s;color:inherit}
 .btn:active{opacity:.7}
 .btn-accent{background:#00C9B1;color:#0F1923}
-.btn-outline{background:transparent;color:#00C9B1;border:1px solid #00C9B1}
+.btn-outline{background:rgba(0,201,177,.08);color:#00C9B1;border:1px solid rgba(0,201,177,.35)}
 .btn-warn{background:#F5A623;color:#1a0800}
 .btn-danger{background:#E8484A;color:#fff}
 .btn-ghost{background:transparent;color:#64748B;border:1px solid #D7DEE6}
@@ -112,12 +112,12 @@ html,body{background:#EEF2F6;color:#16202B;font-family:system-ui,-apple-system,s
 .btn-purple{background:#7C5CBF;color:#fff}
 .btn-green{background:#4CAF7D;color:#0F1923}
 .btn-sm{padding:3px 8px;font-size:11px}
-.card{background:#FFFFFF;border:1px solid #D7DEE6;border-radius:10px;overflow:hidden;margin-bottom:10px}
-.card-body{padding:10px 13px}
-.row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(215,222,230,.4)}
+.card{background:transparent;border:none;border-radius:0;overflow:visible;margin-bottom:10px}
+.card-body{padding:0}
+.row{display:flex;align-items:center;gap:8px;padding:12px 13px;background:#FFFFFF;border:1px solid #D7DEE6;border-radius:12px;margin-bottom:8px;box-shadow:0 1px 3px rgba(16,32,43,.05)}
 .row:last-child{border-bottom:none}
-.row-clickable{cursor:pointer;transition:background .1s}
-.row-clickable:hover{background:rgba(215,222,230,.2);border-radius:6px;padding-left:4px;padding-right:4px}
+.row-clickable{cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}
+.row-clickable:hover{border-color:#B9C4D0;box-shadow:0 3px 10px rgba(16,32,43,.09);transform:translateY(-1px)}
 .item-name{font-weight:500;color:#16202B;font-size:13px}
 .item-sub{font-size:11px;color:#64748B;margin-top:1px}
 .badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap}
