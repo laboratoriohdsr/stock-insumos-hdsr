@@ -145,6 +145,7 @@ button.badge{border:none;cursor:pointer;font-family:inherit}
 .field{margin-bottom:9px}
 .field label{display:block;font-size:11px;color:#90A0B2;margin-bottom:3px}
 .field input,.field select,.field textarea{width:100%;background:#131B24;border:1px solid #2A3A4C;border-radius:6px;padding:7px 10px;color:#E9EEF3;-webkit-text-fill-color:#E9EEF3;font-size:13px;outline:none;font-family:inherit;-webkit-appearance:none;appearance:none}
+.field input[type="checkbox"]{width:17px;height:17px;flex-shrink:0;background:initial;border:none;padding:0;-webkit-appearance:auto;appearance:auto;accent-color:#00C9B1;cursor:pointer}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:#00C9B1}
 .field select option{background:#1E2A38;color:#E9EEF3}
 .modal-actions{display:flex;gap:7px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
@@ -2927,16 +2928,23 @@ window.openUserModal=(type)=>{
       const vd=cfg.semaforoVenc||{verde:365,amarillo:180};
       area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
         <h3><i class="ti ti-traffic-cone" style="color:#F5A623"></i>Semaforización de vencimientos</h3>
-        <p style="color:#90A0B2;font-size:11px;margin-bottom:10px">Define cada cuántos días antes del vencimiento cambia el color del punto junto al nombre del insumo.</p>
+        <p style="color:#90A0B2;font-size:11px;margin-bottom:10px">Define los días antes del vencimiento en que cambia el color del punto junto al nombre del insumo. Hay tres zonas: roja, amarilla y verde.</p>
+
         <div class="field">
-          <label style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#4CAF7D;display:inline-block"></span> Verde si faltan al menos (días)</label>
-          <input id="m-sf-verde" type="number" min="1" value="${vd.verde}">
+          <label style="display:flex;align-items:center;gap:6px;color:#E8484A"><span style="width:10px;height:10px;border-radius:50%;background:#E8484A;display:inline-block"></span> Rojo — si faltan MENOS de (días)</label>
+          <input id="m-sf-rojo" type="number" min="1" value="${vd.amarillo}" oninput="document.getElementById('sfAmarilloMin').textContent=this.value">
         </div>
+
         <div class="field">
-          <label style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#F5A623;display:inline-block"></span> Amarillo si faltan al menos (días)</label>
-          <input id="m-sf-amarillo" type="number" min="1" value="${vd.amarillo}">
+          <label style="display:flex;align-items:center;gap:6px;color:#F5A623"><span style="width:10px;height:10px;border-radius:50%;background:#F5A623;display:inline-block"></span> Amarillo — si faltan ENTRE <span id="sfAmarilloMin" style="text-decoration:underline">${vd.amarillo}</span> y <span id="sfAmarilloMax" style="text-decoration:underline">${vd.verde}</span> días</label>
+          <div style="font-size:11px;color:#90A0B2;margin-top:2px">Este rango se ajusta solo según lo que pongas arriba y abajo.</div>
         </div>
-        <p style="color:#90A0B2;font-size:11px;margin-bottom:10px"><span style="width:10px;height:10px;border-radius:50%;background:#E8484A;display:inline-block;margin-right:4px;vertical-align:middle"></span>Menos de eso (o ya vencido) se muestra en rojo.</p>
+
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:6px;color:#4CAF7D"><span style="width:10px;height:10px;border-radius:50%;background:#4CAF7D;display:inline-block"></span> Verde — si faltan MÁS de (días)</label>
+          <input id="m-sf-verde" type="number" min="1" value="${vd.verde}" oninput="document.getElementById('sfAmarilloMax').textContent=this.value">
+        </div>
+
         <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-accent" onclick="window.guardarSemaforo()"><i class="ti ti-check"></i> Guardar</button></div>
       </div></div>`;
     });
@@ -3068,8 +3076,8 @@ window.removeArea=async(i)=>{ if(!cfg.areas) cfg.areas=[]; cfg.areas.splice(i,1)
 window.addArea=async()=>{ const v=$('newArea')?.value.trim(); if(!v) return; if(!cfg.areas) cfg.areas=[]; cfg.areas.push(v); await saveCfg(); $('newArea').value=''; $('areaList').innerHTML=cfg.areas.map((a,j)=>`<div class="tag">${txt(a)}<button onclick="window.removeArea(${j})">✕</button></div>`).join(''); };
 window.guardarSemaforo=async()=>{
   const verde=parseInt($('m-sf-verde')?.value)||365;
-  const amarillo=parseInt($('m-sf-amarillo')?.value)||180;
-  if(amarillo>=verde){alert('El umbral amarillo debe ser menor que el verde');return;}
+  const amarillo=parseInt($('m-sf-rojo')?.value)||180;
+  if(amarillo>=verde){alert('El umbral rojo debe ser menor que el verde, para que quede espacio para el amarillo');return;}
   cfg.semaforoVenc={verde,amarillo};
   await saveCfg();
   closeM();
