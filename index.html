@@ -213,7 +213,7 @@ button.badge{border:none;cursor:pointer;font-family:inherit}
     </div>
     <div class="topbar-right">
       <button class="lock-btn locked" id="lockBtn" onclick="window.toggleAddLock()">
-        <i class="ti ti-lock" id="lockIcon"></i><span id="lockTxt" class="hide-mobile" style="font-size:11px">Agregar</span>
+        <i class="ti ti-lock" id="lockIcon"></i><span id="lockTxt" class="hide-mobile" style="font-size:11px">Acceso</span>
       </button>
       <button class="btn btn-outline btn-sm" id="newItemBtn" onclick="window.tryNewItem()" style="opacity:.4;pointer-events:none">
         <i class="ti ti-plus"></i><span class="hide-mobile"> Nuevo insumo</span>
@@ -307,9 +307,7 @@ let ST = {
   searchQ:'',
   sortBy:'name',
   statFilter:'',
-  addLocked:true,
   adminUnlocked:false,
-  pedidosUnlocked:false,
   firstLoad:true,
   logTypeFilter:'',
   logDateFrom:'',
@@ -317,6 +315,23 @@ let ST = {
   logRangeMode:'mes'  // 'mes' | 'todo' | 'rango'
 };
 let logsRange=null; // resultados de una consulta por rango de fechas a Firestore directamente
+
+// ── ACCESO ÚNICO: se desbloquea una vez para TODO, se bloquea manual o tras 20 min sin actividad ──
+const UNLOCK_KEY='hdsr_unlocked_until', UNLOCK_MS=20*60*1000;
+let _lastActivity=Date.now();
+(function restoreUnlock(){
+  const until=parseInt(localStorage.getItem(UNLOCK_KEY)||'0');
+  if(until && Date.now()<until){ ST.adminUnlocked=true; _lastActivity=Date.now(); localStorage.setItem(UNLOCK_KEY,String(_lastActivity+UNLOCK_MS)); }
+  else localStorage.removeItem(UNLOCK_KEY);
+})();
+function markActivity(){
+  _lastActivity=Date.now();
+  if(ST.adminUnlocked) localStorage.setItem(UNLOCK_KEY,String(_lastActivity+UNLOCK_MS));
+}
+['click','keydown','touchstart'].forEach(evt=>document.addEventListener(evt,markActivity,{passive:true}));
+setInterval(()=>{
+  if(ST.adminUnlocked && Date.now()-_lastActivity>UNLOCK_MS){ window.lockAll(); }
+},30000);
 
 // ── UTILS ────────────────────────────────────────────────────────────────────
 const $  = id => document.getElementById(id);
@@ -357,8 +372,14 @@ function hideLoading(){ $('loading').style.display='none'; $('app').style.displa
 function updateLockUI(){
   const btn=$('lockBtn'),icon=$('lockIcon'),lbl=$('lockTxt'),nb=$('newItemBtn');
   if(!btn) return;
-  if(ST.addLocked){ btn.className='lock-btn locked'; icon.className='ti ti-lock'; lbl.textContent='Agregar'; if(nb){nb.style.opacity='.4';nb.style.pointerEvents='none';} }
-  else{ btn.className='lock-btn unlocked'; icon.className='ti ti-lock-open'; lbl.textContent='Bloqueado'; if(nb){nb.style.opacity='1';nb.style.pointerEvents='auto';} }
+  if(!ST.adminUnlocked){ btn.className='lock-btn locked'; icon.className='ti ti-lock'; lbl.textContent='Acceso'; if(nb){nb.style.opacity='.4';nb.style.pointerEvents='none';} }
+  else{ btn.className='lock-btn unlocked'; icon.className='ti ti-lock-open'; lbl.textContent='Bloquear'; if(nb){nb.style.opacity='1';nb.style.pointerEvents='auto';} }
+}
+window.lockAll=()=>{ ST.adminUnlocked=false; localStorage.removeItem(UNLOCK_KEY); updateLockUI(); render(); };
+function unlockAdmin(pw){
+  if(pw!==cfg.password) return false;
+  ST.adminUnlocked=true; markActivity(); updateLockUI();
+  return true;
 }
 
 // ── FIREBASE ─────────────────────────────────────────────────────────────────
@@ -982,7 +1003,7 @@ window.cargarRangoLogs=async()=>{
 
 // ── PEDIDOS ───────────────────────────────────────────────────────────────────
 function renderPedidos(){
-  if(!ST.pedidosUnlocked) return `<div class="lock-screen">
+  if(!ST.adminUnlocked) return `<div class="lock-screen">
     <i class="ti ti-shopping-cart" style="color:#A78BFA"></i>
     <h2 style="color:#E9EEF3">Sección de Pedidos</h2>
     <p style="color:#90A0B2;font-size:13px;text-align:center">Contraseña requerida</p>
@@ -1090,7 +1111,7 @@ function renderPedidos(){
   });
 
   h+=`<div style="margin-top:12px;padding-top:10px;border-top:1px solid #2A3A4C;display:flex;justify-content:flex-end">
-    <button class="btn btn-ghost btn-sm" onclick="ST.pedidosUnlocked=false;ST.adminUnlocked=false;render()"><i class="ti ti-logout"></i> Bloquear</button>
+    <button class="btn btn-ghost btn-sm" onclick="window.lockAll()"><i class="ti ti-logout"></i> Bloquear</button>
   </div>`;
   return h;
 }
@@ -1128,7 +1149,7 @@ function renderPapelera(){
     <div class="sec-title" style="margin:0">Papelera de movimientos (${papelera.length})</div>
     <div style="display:flex;gap:6px">
       ${papelera.length?`<button class="btn btn-danger btn-sm" onclick="window.openM('vaciarPapelera')"><i class="ti ti-trash"></i> Vaciar</button>`:''}
-      <button class="btn btn-ghost btn-sm" onclick="ST.adminUnlocked=false;render()"><i class="ti ti-logout"></i> Bloquear</button>
+      <button class="btn btn-ghost btn-sm" onclick="window.lockAll()"><i class="ti ti-logout"></i> Bloquear</button>
     </div>
   </div>`;
   if(!papelera.length) return h+`<div class="empty"><i class="ti ti-trash"></i><span>Papelera vacía</span></div>`;
@@ -1158,19 +1179,19 @@ function requireAdmin(cb){
   </div></div>`;
   window._adminCb=()=>{
     const v=$('adminPin')?.value||'';
-    if(v===cfg.password){ST.adminUnlocked=true;closeM();cb();}
+    if(unlockAdmin(v)){closeM();cb();}
     else{const e=$('adminPinErr');if(e){e.style.display='block';setTimeout(()=>e.style.display='none',1500);}}
   };
 }
 window.requireAdmin=requireAdmin;
 window.checkPass=()=>{
   const v=$('pinInput')?.value||'';
-  if(v===cfg.password){ST.pedidosUnlocked=true;ST.adminUnlocked=true;render();}
+  if(unlockAdmin(v)){render();}
   else{const e=$('pinError');if(e){e.style.display='block';setTimeout(()=>e.style.display='none',1500);}}
 };
 window.checkAdminPap=()=>{
   const v=$('pinInputPap')?.value||'';
-  if(v===cfg.password){ST.adminUnlocked=true;render();}
+  if(unlockAdmin(v)){render();}
   else{const e=$('pinErrorPap');if(e){e.style.display='block';setTimeout(()=>e.style.display='none',1500);}}
 };
 
@@ -1216,6 +1237,32 @@ window.openM=(type,...args)=>{
 
   } else if(type==='itemDetail'){
     if(!item) return;
+    if(!ST.adminUnlocked){
+      // Vista de solo lectura — accesible para cualquiera, sin contraseña
+      const vencRow=item.manejaVencimiento?`<div class="info-box" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <span>${item.vencimiento?`Vence: <b>${txt(item.vencimiento)}</b>${item.lote?` · Lote: <b>${txt(item.lote)}</b>`:''}`:'<span style="color:#90A0B2">Sin fecha de vencimiento registrada aún</span>'}</span>
+          <button class="btn btn-ghost btn-sm" onclick="window.openM('editVenc','${item.id}')" title="Editar fecha y lote"><i class="ti ti-pencil" style="color:#00C9B1"></i></button>
+        </div>`:'';
+      area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
+        <h3>${txt(item.name)}${vencDot(item)}</h3>
+        <div class="info-box" style="margin-bottom:8px">
+          <div style="font-size:12px;color:#90A0B2">${txt(item.cat)}${(item.areas&&item.areas.length)?' · '+item.areas.map(txt).join(', '):''}</div>
+          ${item.sinonimos?`<div style="font-size:11px;color:#90A0B2;margin-top:2px">Sinónimos: ${txt(item.sinonimos)}</div>`:''}
+        </div>
+        <div class="info-box" style="margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap">
+          <span>Almacén: <b>${item.almacen}</b></span>
+          <span>Laboratorio: <b>${item.lab}</b></span>
+          <span>Microbiología: <b>${item.paila||0}</b></span>
+          <span style="color:#90A0B2">Mín: ${item.min||2}</span>
+        </div>
+        ${vencRow}
+        <div class="modal-actions">
+          <button class="btn btn-ghost" onclick="closeM()">Cerrar</button>
+          <button class="btn btn-outline btn-sm" onclick="requireAdmin(()=>window.openM('itemDetail','${item.id}'))"><i class="ti ti-lock-open"></i> Desbloquear para editar todo</button>
+        </div>
+      </div></div>`;
+      return;
+    }
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
       <h3><i class="ti ti-edit" style="color:#00C9B1"></i>Editar · ${txt(item.name)}</h3>
       <div class="field"><label>Nombre</label><input id="m-name" value="${txt(item.name)}" autocomplete="off"></div>
@@ -1231,11 +1278,23 @@ window.openM=(type,...args)=>{
         <input type="checkbox" id="m-venc" ${item.manejaVencimiento?'checked':''} style="width:16px;height:16px;cursor:pointer">
         <label for="m-venc" style="margin:0;cursor:pointer">Controla fecha de vencimiento (pedirá fecha y lote en cada ingreso)</label>
       </div>
-      ${item.manejaVencimiento&&item.vencimiento?`<div class="info-box" style="margin-bottom:10px">Vence: <b>${txt(item.vencimiento)}</b>${item.lote?` · Lote: <b>${txt(item.lote)}</b>`:''}</div>`:''}
+      ${item.manejaVencimiento&&item.vencimiento?`<div class="info-box" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span>Vence: <b>${txt(item.vencimiento)}</b>${item.lote?` · Lote: <b>${txt(item.lote)}</b>`:''}</span><button class="btn btn-ghost btn-sm" onclick="window.openM('editVenc','${item.id}')" title="Editar fecha y lote"><i class="ti ti-pencil" style="color:#00C9B1"></i></button></div>`:''}
       <div class="modal-actions">
         <button class="btn btn-danger btn-sm" onclick="window.openM('delete','${item.id}')"><i class="ti ti-trash"></i></button>
         <button class="btn btn-ghost" onclick="closeM()">Cancelar</button>
         <button class="btn btn-accent" onclick="window.doEdit('${item.id}',${item.almacen},${item.lab},${item.paila||0})"><i class="ti ti-check"></i> Guardar</button>
+      </div>
+    </div></div>`;
+
+  } else if(type==='editVenc'){
+    if(!item) return;
+    area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
+      <h3><i class="ti ti-calendar-due" style="color:#F5A623"></i>Fecha de vencimiento · ${txt(item.name)}</h3>
+      <div class="field"><label>Fecha de vencimiento</label><input id="m-ev-fecha" type="date" value="${txt(item.vencimiento||'')}" autofocus></div>
+      <div class="field"><label>Lote</label><input id="m-ev-lote" value="${txt(item.lote||'')}" placeholder="Número de lote" autocomplete="off"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="window.openM('itemDetail','${item.id}')">Volver</button>
+        <button class="btn btn-sm" style="background:#F5A623;color:#131B24" onclick="window.doEditVenc('${item.id}')"><i class="ti ti-check"></i> Guardar</button>
       </div>
     </div></div>`;
 
@@ -1694,7 +1753,15 @@ window.openM=(type,...args)=>{
   }
 };
 
-window.openItemDetail=(id)=>{ requireAdmin(()=>window.openM('itemDetail',id)); };
+window.openItemDetail=(id)=>{ window.openM('itemDetail',id); };
+window.doEditVenc=async(id)=>{
+  const fecha=$('m-ev-fecha')?.value||'', lote=$('m-ev-lote')?.value.trim()||'';
+  if(!fecha||!lote){alert('Completa la fecha de vencimiento y el lote');return;}
+  const it=items.find(i=>i.id===id);
+  await updateDoc(doc(db,'items',id),{vencimiento:fecha,lote});
+  await addLog('edit',`Vencimiento actualizado: ${it?.name||''}`,`Vence: ${fecha} · Lote: ${lote}`);
+  window.openM('itemDetail',id);
+};
 window.closeM=()=>{ $('modal-area').innerHTML=''; };
 
 // ── USO ───────────────────────────────────────────────────────────────────────
@@ -2839,7 +2906,7 @@ window.doVaciarSalidas=async()=>{
 
 // ── ELIMINAR PEDIDOS Y REMISIONES INDIVIDUALMENTE ─────────────────────────────
 window.doDeletePedido=async(id)=>{
-  if(!ST.pedidosUnlocked&&!ST.adminUnlocked){alert('Requiere estar autenticado en Pedidos');return;}
+  if(!ST.adminUnlocked){alert('Requiere acceso desbloqueado');return;}
   if(!confirm('¿Eliminar este pedido?')) return;
   await deleteDoc(doc(db,'pedidos',id));
 };
@@ -3109,8 +3176,8 @@ window.removeSvc=async(i)=>{
 };
 window.addSvc=async()=>{ const v=$('newSvc')?.value.trim(); if(!v) return; cfg.services.push(v); await saveCfg(); $('newSvc').value=''; window._refreshSvcList?.(); };
 
-window.toggleAddLock=()=>{ if(ST.addLocked){requireAdmin(()=>{ST.addLocked=false;updateLockUI();});}else{ST.addLocked=true;updateLockUI();} };
-window.tryNewItem=()=>{ if(!ST.addLocked) window.openM('addItem'); };
+window.toggleAddLock=()=>{ if(!ST.adminUnlocked){requireAdmin(()=>{updateLockUI();});}else{window.lockAll();} };
+window.tryNewItem=()=>{ if(ST.adminUnlocked) window.openM('addItem'); };
 window.toggleUserMenu=()=>{ const m=$('userMenu'); if(m)m.style.display=m.style.display==='none'?'block':'none'; };
 window.closeUserMenu=()=>{ const m=$('userMenu'); if(m)m.style.display='none'; };
 document.addEventListener('click',e=>{ const w=$('userMenuWrap'); if(w&&!w.contains(e.target)) window.closeUserMenu(); });
