@@ -351,12 +351,32 @@ function vencColor(dias){
   if(dias>=vd.amarillo) return '#F5A623';
   return '#E8484A';
 }
+function lotesEnUbic(item,ubic){ return (item.lotes||[]).filter(l=>l.ubicacion===ubic&&l.qty>0).sort((a,b)=>(a.vencimiento||'').localeCompare(b.vencimiento||'')); }
+function lotesMasUrgente(item){
+  const todos=(item.lotes||[]).filter(l=>l.qty>0);
+  if(!todos.length) return null;
+  return [...todos].sort((a,b)=>(a.vencimiento||'').localeCompare(b.vencimiento||''))[0];
+}
+function addLoteQty(lotesArr,ubicacion,lote,vencimiento,qty){
+  const arr=[...(lotesArr||[])];
+  const idx=arr.findIndex(l=>l.ubicacion===ubicacion&&l.lote===lote&&l.vencimiento===vencimiento);
+  if(idx>=0) arr[idx]={...arr[idx],qty:arr[idx].qty+qty};
+  else arr.push({id:genId(),lote,vencimiento,ubicacion,qty});
+  return arr;
+}
+function subLoteQty(lotesArr,loteId,qty){
+  return (lotesArr||[]).map(l=>l.id===loteId?{...l,qty:l.qty-qty}:l).filter(l=>l.qty>0);
+}
 function vencDot(item){
-  if(!item.manejaVencimiento||!item.vencimiento) return '';
-  const dias=diasParaVencer(item.vencimiento);
+  if(!item.manejaVencimiento) return '';
+  const urgente=lotesMasUrgente(item);
+  const fecha=urgente?urgente.vencimiento:item.vencimiento;
+  const lote=urgente?urgente.lote:item.lote;
+  if(!fecha) return '';
+  const dias=diasParaVencer(fecha);
   if(dias===null) return '';
   const color=vencColor(dias);
-  const label=dias<0?`Vencido hace ${Math.abs(dias)} días (${item.vencimiento})${item.lote?' · Lote '+item.lote:''}`:`Vence en ${dias} días (${item.vencimiento})${item.lote?' · Lote '+item.lote:''}`;
+  const label=dias<0?`Vencido hace ${Math.abs(dias)} días (${fecha})${lote?' · Lote '+lote:''}`:`Vence en ${dias} días (${fecha})${lote?' · Lote '+lote:''}`;
   return ` <span title="${txt(label)}" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-left:5px;vertical-align:middle;flex-shrink:0"></span>`;
 }
 const ts  = () => new Date().toLocaleString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
@@ -1239,10 +1259,31 @@ window.openM=(type,...args)=>{
     if(!item) return;
     if(!ST.adminUnlocked){
       // Vista de solo lectura — accesible para cualquiera, sin contraseña
-      const vencRow=item.manejaVencimiento?`<div class="info-box" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px">
-          <span>${item.vencimiento?`Vence: <b>${txt(item.vencimiento)}</b>${item.lote?` · Lote: <b>${txt(item.lote)}</b>`:''}`:'<span style="color:#90A0B2">Sin fecha de vencimiento registrada aún</span>'}</span>
-          <button class="btn btn-ghost btn-sm" onclick="window.openM('editVenc','${item.id}')" title="Editar fecha y lote"><i class="ti ti-pencil" style="color:#00C9B1"></i></button>
-        </div>`:'';
+      const lotesActivos=(item.lotes||[]).filter(l=>l.qty>0).sort((a,b)=>(a.vencimiento||'').localeCompare(b.vencimiento||''));
+      const ubicLbl={almacen:'Almacén',lab:'Laboratorio',paila:'Microbiología'};
+      let vencRow='';
+      if(item.manejaVencimiento){
+        if(lotesActivos.length){
+          vencRow=`<div class="info-box" style="margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <span style="font-size:11px;color:#90A0B2;font-weight:600">LOTES Y VENCIMIENTOS</span>
+              <button class="btn btn-ghost btn-sm" onclick="window.openM('editVenc','${item.id}')" title="Agregar / editar lote"><i class="ti ti-pencil" style="color:#00C9B1"></i></button>
+            </div>
+            ${lotesActivos.map(l=>{
+              const dias=diasParaVencer(l.vencimiento); const color=vencColor(dias);
+              return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+                <span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></span>
+                <span>${l.qty} en <b>${ubicLbl[l.ubicacion]||l.ubicacion}</b> · Lote ${txt(l.lote)} · vence ${l.vencimiento}</span>
+              </div>`;
+            }).join('')}
+          </div>`;
+        } else {
+          vencRow=`<div class="info-box" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span>${item.vencimiento?`Vence: <b>${txt(item.vencimiento)}</b>${item.lote?` · Lote: <b>${txt(item.lote)}</b>`:''}`:'<span style="color:#90A0B2">Sin fecha de vencimiento registrada aún</span>'}</span>
+            <button class="btn btn-ghost btn-sm" onclick="window.openM('editVenc','${item.id}')" title="Editar fecha y lote"><i class="ti ti-pencil" style="color:#00C9B1"></i></button>
+          </div>`;
+        }
+      }
       area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
         <h3>${txt(item.name)}${vencDot(item)}</h3>
         <div class="info-box" style="margin-bottom:8px">
@@ -1288,10 +1329,20 @@ window.openM=(type,...args)=>{
 
   } else if(type==='editVenc'){
     if(!item) return;
+    const lotesActivos=(item.lotes||[]).filter(l=>l.qty>0).sort((a,b)=>(a.vencimiento||'').localeCompare(b.vencimiento||''));
+    const ubicLbl={almacen:'Almacén',lab:'Laboratorio',paila:'Microbiología'};
+    const picker=lotesActivos.length?`<div class="field"><label>¿Cuál lote vas a corregir?</label>
+      <select id="m-ev-pick" onchange="const o=this.selectedOptions[0];document.getElementById('m-ev-fecha').value=o.dataset.venc||'';document.getElementById('m-ev-lote').value=o.dataset.lote||'';">
+        ${lotesActivos.map(l=>`<option value="${l.id}" data-venc="${l.vencimiento}" data-lote="${txt(l.lote)}">${l.qty} en ${ubicLbl[l.ubicacion]||l.ubicacion} · Lote ${txt(l.lote)} · vence ${l.vencimiento}</option>`).join('')}
+      </select>
+    </div>`:'';
+    const first=lotesActivos[0];
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
       <h3><i class="ti ti-calendar-due" style="color:#F5A623"></i>Fecha de vencimiento · ${txt(item.name)}</h3>
-      <div class="field"><label>Fecha de vencimiento</label><input id="m-ev-fecha" type="date" value="${txt(item.vencimiento||'')}" autofocus></div>
-      <div class="field"><label>Lote</label><input id="m-ev-lote" value="${txt(item.lote||'')}" placeholder="Número de lote" autocomplete="off"></div>
+      ${picker}
+      <div class="field"><label>Fecha de vencimiento</label><input id="m-ev-fecha" type="date" value="${txt(first?first.vencimiento:(item.vencimiento||''))}" ${lotesActivos.length?'':'autofocus'}></div>
+      <div class="field"><label>Lote</label><input id="m-ev-lote" value="${txt(first?first.lote:(item.lote||''))}" placeholder="Número de lote" autocomplete="off"></div>
+      <p style="color:#90A0B2;font-size:11px;margin-bottom:10px">Esto solo corrige la fecha o el número de lote. Para agregar o mover cantidades usa Ingreso o Salida.</p>
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="window.openM('itemDetail','${item.id}')">Volver</button>
         <button class="btn btn-sm" style="background:#F5A623;color:#131B24" onclick="window.doEditVenc('${item.id}')"><i class="ti ti-check"></i> Guardar</button>
@@ -1302,7 +1353,13 @@ window.openM=(type,...args)=>{
     if(!item) return; const from=args[1];
     const paila=item.paila||0;
     const prestadosPend=prestamos.filter(p=>p.tipo==='prestado'&&p.estado!=='devuelto');
-    const origenSelect=`<div class="field"><label>¿De dónde viene?</label><select id="m-origen" onchange="document.getElementById('prestamoEntWrap').style.display=this.value==='prestamo'?'block':'none';document.getElementById('regresadoWrap').style.display=this.value==='regresado'?'block':'none'">
+    const origenSelect=`<div class="field"><label>¿De dónde viene?</label><select id="m-origen" onchange="
+      document.getElementById('prestamoEntWrap').style.display=this.value==='prestamo'?'block':'none';
+      document.getElementById('regresadoWrap').style.display=this.value==='regresado'?'block':'none';
+      const _vnw=document.getElementById('vencNuevoWrap'); if(_vnw) _vnw.style.display=['comercial','farmacia','prestamo','regresado'].includes(this.value)?'block':'none';
+      const _law=document.getElementById('loteAlmacenWrap'); if(_law) _law.style.display=this.value==='almacen'?'block':'none';
+      const _llw=document.getElementById('loteLabWrap'); if(_llw) _llw.style.display=this.value==='lab'?'block':'none';
+    ">
       <option value="" selected disabled>Seleccionar origen...</option>
       <option value="comercial">Casa comercial (producto nuevo)</option>
       <option value="farmacia">Farmacia</option>
@@ -1320,15 +1377,42 @@ window.openM=(type,...args)=>{
     </div>`;
     const color=from==='paila'?'#FFB347':'#4CAF7D';
     const lugar=from==='paila'?'La Paila':from==='lab'?'Laboratorio':'Almacén';
+
+    // Campos de lote/vencimiento: NUEVO stock (comercial/farmacia/préstamo/regresado) pide fecha+lote;
+    // traslado interno (almacén→lab/paila, lab→paila) pregunta de cuál lote existente se mueve, solo si hay más de uno.
+    let vencBlocks='';
+    if(item.manejaVencimiento){
+      vencBlocks+=`<div id="vencNuevoWrap" style="display:none">
+        <div class="field"><label>Fecha de vencimiento *</label><input id="m-venc-fecha" type="date"></div>
+        <div class="field"><label>Lote *</label><input id="m-venc-lote" placeholder="Número de lote" autocomplete="off"></div>
+      </div>`;
+
+      const lotesAlm=lotesEnUbic(item,'almacen');
+      const lotesLab=lotesEnUbic(item,'lab');
+      if(from==='lab'||from==='paila'){
+        vencBlocks+=`<div class="field" id="loteAlmacenWrap" style="display:none">
+          <label>¿Cuál lote del almacén vas a pasar?</label>
+          ${lotesAlm.length>1?`<select id="m-lote-almacen">${lotesAlm.map(l=>`<option value="${l.id}">Lote ${txt(l.lote)} · vence ${l.vencimiento} · disp: ${l.qty}</option>`).join('')}</select>`
+            :lotesAlm.length===1?`<div class="info-box">Lote ${txt(lotesAlm[0].lote)} · vence ${lotesAlm[0].vencimiento} · disp: ${lotesAlm[0].qty}<input type="hidden" id="m-lote-almacen" value="${lotesAlm[0].id}"></div>`
+            :`<div class="info-box" style="color:#90A0B2">Sin lotes registrados en almacén todavía (se moverá sin detalle de lote)</div>`}
+        </div>`;
+      }
+      if(from==='paila'){
+        vencBlocks+=`<div class="field" id="loteLabWrap" style="display:none">
+          <label>¿Cuál lote del laboratorio vas a pasar?</label>
+          ${lotesLab.length>1?`<select id="m-lote-lab">${lotesLab.map(l=>`<option value="${l.id}">Lote ${txt(l.lote)} · vence ${l.vencimiento} · disp: ${l.qty}</option>`).join('')}</select>`
+            :lotesLab.length===1?`<div class="info-box">Lote ${txt(lotesLab[0].lote)} · vence ${lotesLab[0].vencimiento} · disp: ${lotesLab[0].qty}<input type="hidden" id="m-lote-lab" value="${lotesLab[0].id}"></div>`
+            :`<div class="info-box" style="color:#90A0B2">Sin lotes registrados en laboratorio todavía (se moverá sin detalle de lote)</div>`}
+        </div>`;
+      }
+    }
+
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
       <h3><i class="ti ti-plus" style="color:${color}"></i>Ingreso a ${lugar} · ${txt(item.name)}</h3>
       <div class="info-box">Almacén: <b>${item.almacen}</b> · Laboratorio: <b>${item.lab}</b> · Micro: <b>${paila}</b></div>
       <div class="field"><label>Cantidad que ingresa</label><input id="m-qty" type="number" min="1" value="1" autofocus></div>
       ${origenSelect}
-      ${item.manejaVencimiento?`
-      <div class="field"><label>Fecha de vencimiento *</label><input id="m-venc-fecha" type="date" value="${txt(item.vencimiento||'')}"></div>
-      <div class="field"><label>Lote *</label><input id="m-venc-lote" value="${txt(item.lote||'')}" placeholder="Número de lote" autocomplete="off"></div>
-      `:''}
+      ${vencBlocks}
       <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-green" style="background:${color};color:#0F1923" onclick="window.doIngreso('${item.id}','${from}',${item.almacen},${item.lab},'${txt(item.unit)}','${txt(item.name)}',${paila})"><i class="ti ti-check"></i> Registrar ingreso</button></div>
     </div></div>`;
 
@@ -1351,6 +1435,13 @@ window.openM=(type,...args)=>{
       <h3><i class="ti ti-door-exit" style="color:${color}"></i>Dar salida desde ${lugar} · ${txt(item.name)}</h3>
       <div class="warn-box" style="border-color:rgba(255,179,71,.3);color:${color}">Desde: <b>${lugar}</b> · Disponible: <b>${disp} ${txt(item.unit)}</b></div>
       <div class="field"><label>Cantidad</label><input id="m-qty" type="number" min="1" max="${disp}" value="1" autofocus></div>
+      ${(()=>{
+        if(!item.manejaVencimiento) return '';
+        const lotesAqui=lotesEnUbic(item,from);
+        if(!lotesAqui.length) return '';
+        if(lotesAqui.length===1) return `<div class="info-box">Lote: <b>${txt(lotesAqui[0].lote)}</b> · vence ${lotesAqui[0].vencimiento}<input type="hidden" id="m-lote-salida" value="${lotesAqui[0].id}"></div>`;
+        return `<div class="field"><label>¿De cuál lote sale?</label><select id="m-lote-salida">${lotesAqui.map(l=>`<option value="${l.id}">Lote ${txt(l.lote)} · vence ${l.vencimiento} · disp: ${l.qty}</option>`).join('')}</select></div>`;
+      })()}
       <div class="field"><label>Servicio destinatario</label>
         <select id="m-dest" onchange="document.getElementById('otroDestWrap').style.display=this.value==='__otro'?'block':'none';document.getElementById('devolucionWrap').style.display=this.value==='__devolucion'?'block':'none';document.getElementById('prestamoSalWrap').style.display=this.value==='__prestamo'?'block':'none'">
           <option value="">Seleccionar servicio...</option>${servicesOpts()}<option value="__otro">Otro (especificar)...</option>
@@ -1399,6 +1490,13 @@ window.openM=(type,...args)=>{
       <h3><i class="ti ti-arrow-right" style="color:#00C9B1"></i>Registrar ingreso desde Lab · ${txt(item.name)}</h3>
       <div class="info-box" style="border-color:rgba(0,201,177,.3);color:#00C9B1">Disponible en laboratorio: <b>${stockLab} ${txt(item.unit)}</b></div>
       <div class="field"><label>Cantidad recibida en Microbiología</label><input id="m-qty" type="number" min="1" max="${stockLab}" value="1" autofocus></div>
+      ${(()=>{
+        if(!item.manejaVencimiento) return '';
+        const lotesAqui=lotesEnUbic(item,'lab');
+        if(!lotesAqui.length) return '';
+        if(lotesAqui.length===1) return `<div class="info-box">Lote: <b>${txt(lotesAqui[0].lote)}</b> · vence ${lotesAqui[0].vencimiento}<input type="hidden" id="m-lote-ltp" value="${lotesAqui[0].id}"></div>`;
+        return `<div class="field"><label>¿De cuál lote del laboratorio?</label><select id="m-lote-ltp">${lotesAqui.map(l=>`<option value="${l.id}">Lote ${txt(l.lote)} · vence ${l.vencimiento} · disp: ${l.qty}</option>`).join('')}</select></div>`;
+      })()}
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="closeM()">Cancelar</button>
         <button class="btn btn-accent btn-sm" onclick="window.doLabToPailaDirecto('${item.id}',${stockLab},${stockP},'${txt(item.unit)}','${txt(item.name)}')"><i class="ti ti-check"></i> Confirmar ingreso</button>
@@ -1758,7 +1856,13 @@ window.doEditVenc=async(id)=>{
   const fecha=$('m-ev-fecha')?.value||'', lote=$('m-ev-lote')?.value.trim()||'';
   if(!fecha||!lote){alert('Completa la fecha de vencimiento y el lote');return;}
   const it=items.find(i=>i.id===id);
-  await updateDoc(doc(db,'items',id),{vencimiento:fecha,lote});
+  const pickId=$('m-ev-pick')?.value||'';
+  if(pickId&&it){
+    const lotesNuevo=(it.lotes||[]).map(l=>l.id===pickId?{...l,vencimiento:fecha,lote}:l);
+    await updateDoc(doc(db,'items',id),{lotes:lotesNuevo});
+  } else {
+    await updateDoc(doc(db,'items',id),{vencimiento:fecha,lote});
+  }
   await addLog('edit',`Vencimiento actualizado: ${it?.name||''}`,`Vence: ${fecha} · Lote: ${lote}`);
   window.openM('itemDetail',id);
 };
@@ -1957,17 +2061,36 @@ window.doIngreso=async(id,from,prevA,prevL,unit,name,prevP=0)=>{
   const origen=$('m-origen')?.value||'';
   if(!origen){alert('Selecciona de dónde viene el insumo');return;}
   const itemRef=items.find(i=>i.id===id);
-  let vencUpd={};
+  const esStockNuevo=['comercial','farmacia','prestamo','regresado'].includes(origen);
+  let vencUpd={}, lotesFinal=itemRef?.lotes||[], loteOrigenUsado=null;
   if(itemRef?.manejaVencimiento){
-    const vFecha=$('m-venc-fecha')?.value||'', vLote=$('m-venc-lote')?.value.trim()||'';
-    if(!vFecha||!vLote){alert('Este insumo requiere fecha de vencimiento y lote para registrar el ingreso');return;}
-    vencUpd={vencimiento:vFecha,lote:vLote};
+    if(esStockNuevo){
+      const vFecha=$('m-venc-fecha')?.value||'', vLote=$('m-venc-lote')?.value.trim()||'';
+      if(!vFecha||!vLote){alert('Este insumo requiere fecha de vencimiento y lote para registrar el ingreso');return;}
+      vencUpd={vencimiento:vFecha,lote:vLote};
+      const destUbic=from==='lab'?'lab':from==='paila'?'paila':'almacen';
+      lotesFinal=addLoteQty(lotesFinal,destUbic,vLote,vFecha,qty);
+    } else if(origen==='almacen'||origen==='lab'){
+      const srcUbic=origen;
+      const selId=$(origen==='almacen'?'m-lote-almacen':'m-lote-lab')?.value||'';
+      if(selId){
+        const loteSrc=(lotesFinal||[]).find(l=>l.id===selId);
+        if(loteSrc){
+          if(qty>loteSrc.qty){alert(`Ese lote solo tiene ${loteSrc.qty} ${unit} disponibles. Reduce la cantidad o hazlo en dos movimientos.`);return;}
+          loteOrigenUsado=loteSrc;
+          const destUbic=from==='paila'?'paila':'lab';
+          lotesFinal=subLoteQty(lotesFinal,loteSrc.id,qty);
+          lotesFinal=addLoteQty(lotesFinal,destUbic,loteSrc.lote,loteSrc.vencimiento,qty);
+        }
+      }
+    }
   }
+  const lotesPayload={lotes:lotesFinal};
   const B0={almacen:prevA,lab:prevL,paila:prevP};
   if(origen==='prestamo'){
     const entidad=$('m-prestamo-ent')?.value.trim();
     if(!entidad){alert('Escribe quién nos presta el insumo');return;}
-    const upd={...(from==='lab'?{lab:prevL+qty}:from==='paila'?{paila:prevP+qty}:{almacen:prevA+qty}),...vencUpd};
+    const upd={...(from==='lab'?{lab:prevL+qty}:from==='paila'?{paila:prevP+qty}:{almacen:prevA+qty}),...vencUpd,...lotesPayload};
     await updateDoc(doc(db,'items',id),upd);
     await addDoc(collection(db,'prestamos'),{insumo:name,qty,unit,entidad,tipo:'recibido',itemId:id,obs:'Registrado desde ingreso',estado:'activo',fecha:tsDate(),createdAt:serverTimestamp()});
     await addLog('ingreso',`Ingreso por préstamo de ${entidad}: ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,...upd}));
@@ -1977,7 +2100,7 @@ window.doIngreso=async(id,from,prevA,prevL,unit,name,prevP=0)=>{
   }
   if(origen==='regresado'){
     const prId=$('m-regresado-prestamo')?.value||'';
-    const upd={...(from==='lab'?{lab:prevL+qty}:from==='paila'?{paila:prevP+qty}:{almacen:prevA+qty}),...vencUpd};
+    const upd={...(from==='lab'?{lab:prevL+qty}:from==='paila'?{paila:prevP+qty}:{almacen:prevA+qty}),...vencUpd,...lotesPayload};
     await updateDoc(doc(db,'items',id),upd);
     let quien='';
     if(prId){
@@ -1990,32 +2113,33 @@ window.doIngreso=async(id,from,prevA,prevL,unit,name,prevP=0)=>{
     if(prId) window.setTabDirect('prestamos');
     return;
   }
+  const loteTxt=loteOrigenUsado?` · Lote ${loteOrigenUsado.lote}`:'';
   if(from==='lab'&&origen==='almacen'){
     if(prevA<qty){alert(`Solo hay ${prevA} ${unit} en almacén`);return;}
-    await updateDoc(doc(db,'items',id),{almacen:prevA-qty,lab:prevL+qty,...vencUpd});
-    await addLog('ingreso',`Ingreso al laboratorio desde almacén: ${name}`,`${qty} ${unit}`,mkMov(name,B0,{...B0,almacen:prevA-qty,lab:prevL+qty}));
+    await updateDoc(doc(db,'items',id),{almacen:prevA-qty,lab:prevL+qty,...vencUpd,...lotesPayload});
+    await addLog('ingreso',`Ingreso al laboratorio desde almacén: ${name}`,`${qty} ${unit}${loteTxt}`,mkMov(name,B0,{...B0,almacen:prevA-qty,lab:prevL+qty}));
   } else if(from==='lab'&&origen==='farmacia'){
-    await updateDoc(doc(db,'items',id),{lab:prevL+qty,...vencUpd});
+    await updateDoc(doc(db,'items',id),{lab:prevL+qty,...vencUpd,...lotesPayload});
     await addLog('ingreso',`Ingreso al laboratorio desde farmacia: ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,lab:prevL+qty}));
   } else if(from==='lab'){
-    await updateDoc(doc(db,'items',id),{lab:prevL+qty,...vencUpd});
+    await updateDoc(doc(db,'items',id),{lab:prevL+qty,...vencUpd,...lotesPayload});
     await addLog('ingreso',`Ingreso al laboratorio (casa comercial): ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,lab:prevL+qty}));
   } else if(from==='paila'&&origen==='almacen'){
     if(prevA<qty){alert(`Solo hay ${prevA} ${unit} en almacén`);return;}
-    await updateDoc(doc(db,'items',id),{almacen:prevA-qty,paila:prevP+qty,...vencUpd});
-    await addLog('ingreso',`Ingreso a Microbiología desde almacén: ${name}`,`${qty} ${unit}`,mkMov(name,B0,{...B0,almacen:prevA-qty,paila:prevP+qty}));
+    await updateDoc(doc(db,'items',id),{almacen:prevA-qty,paila:prevP+qty,...vencUpd,...lotesPayload});
+    await addLog('ingreso',`Ingreso a Microbiología desde almacén: ${name}`,`${qty} ${unit}${loteTxt}`,mkMov(name,B0,{...B0,almacen:prevA-qty,paila:prevP+qty}));
   } else if(from==='paila'&&origen==='farmacia'){
-    await updateDoc(doc(db,'items',id),{paila:prevP+qty,...vencUpd});
+    await updateDoc(doc(db,'items',id),{paila:prevP+qty,...vencUpd,...lotesPayload});
     await addLog('ingreso',`Ingreso a Microbiología desde farmacia: ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,paila:prevP+qty}));
   } else if(from==='paila'&&origen==='lab'){
     if(prevL<qty){alert(`Solo hay ${prevL} ${unit} en laboratorio`);return;}
-    await updateDoc(doc(db,'items',id),{lab:prevL-qty,paila:prevP+qty,...vencUpd});
-    await addLog('ingreso',`Ingreso a Microbiología desde laboratorio: ${name}`,`${qty} ${unit}`,mkMov(name,B0,{...B0,lab:prevL-qty,paila:prevP+qty}));
+    await updateDoc(doc(db,'items',id),{lab:prevL-qty,paila:prevP+qty,...vencUpd,...lotesPayload});
+    await addLog('ingreso',`Ingreso a Microbiología desde laboratorio: ${name}`,`${qty} ${unit}${loteTxt}`,mkMov(name,B0,{...B0,lab:prevL-qty,paila:prevP+qty}));
   } else if(from==='paila'){
-    await updateDoc(doc(db,'items',id),{paila:prevP+qty,...vencUpd});
+    await updateDoc(doc(db,'items',id),{paila:prevP+qty,...vencUpd,...lotesPayload});
     await addLog('ingreso',`Ingreso a Microbiología (casa comercial): ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,paila:prevP+qty}));
   } else {
-    await updateDoc(doc(db,'items',id),{almacen:prevA+qty,...vencUpd});
+    await updateDoc(doc(db,'items',id),{almacen:prevA+qty,...vencUpd,...lotesPayload});
     await addLog('ingreso',`Ingreso al almacén: ${name}`,`+${qty} ${unit}`,mkMov(name,B0,{...B0,almacen:prevA+qty}));
   }
   closeM();
@@ -2030,15 +2154,24 @@ window.doSalida=async(id,from,almacen,lab,unit,name,paila=0)=>{
   const selDest=$('m-dest')?.value, destOtro=$('m-dest-otro')?.value.trim();
   const avail=from==='almacen'?almacen:from==='paila'?paila:lab;
   if(qty<=0||qty>avail){alert('Cantidad no válida');return;}
+  const itemRef=items.find(i=>i.id===id);
+  let loteUsado=null;
+  const loteSelEl=$('m-lote-salida');
+  if(loteSelEl?.value){
+    loteUsado=(itemRef?.lotes||[]).find(l=>l.id===loteSelEl.value)||null;
+    if(loteUsado&&qty>loteUsado.qty){alert(`Ese lote solo tiene ${loteUsado.qty} ${unit} disponibles. Reduce la cantidad o hazlo en dos movimientos.`);return;}
+  }
+  const lotesPayload=loteUsado?{lotes:subLoteQty(itemRef.lotes,loteUsado.id,qty)}:{};
+  const loteTxt=loteUsado?` · Lote ${loteUsado.lote}`:'';
   const B0={almacen,lab,paila};
   if(selDest==='__prestamo'){
     const entidad=$('m-pre-sal-ent')?.value.trim();
     const obs=$('m-pre-sal-obs')?.value.trim()||'';
     if(!entidad){alert('Escribe a quién le prestamos');return;}
-    const upd=from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty};
+    const upd={...(from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty}),...lotesPayload};
     await updateDoc(doc(db,'items',id),upd);
-    await addDoc(collection(db,'prestamos'),{insumo:name,qty,unit,entidad,tipo:'prestado',itemId:id,obs:obs||'Registrado desde salida',estado:'activo',fecha:tsDate(),createdAt:serverTimestamp()});
-    await addLog('salida',`Préstamo entregado a ${entidad}: ${name}`,`${qty} ${unit}`,mkMov(name,B0,{...B0,...upd}));
+    await addDoc(collection(db,'prestamos'),{insumo:name,qty,unit,entidad,tipo:'prestado',itemId:id,lote:loteUsado?.lote||null,vencimiento:loteUsado?.vencimiento||null,obs:obs||'Registrado desde salida',estado:'activo',fecha:tsDate(),createdAt:serverTimestamp()});
+    await addLog('salida',`Préstamo entregado a ${entidad}: ${name}`,`${qty} ${unit}${loteTxt}`,mkMov(name,B0,{...B0,...upd}));
     closeM();
     window.setTabDirect('prestamos');
     return;
@@ -2050,21 +2183,21 @@ window.doSalida=async(id,from,almacen,lab,unit,name,paila=0)=>{
     if(!prId){alert('Indica si corresponde a un préstamo pendiente o selecciona "No — es otra devolución"');return;}
     if(prId==='__no') prId='';
     if(!entidad){alert('Escribe a quién se devuelve');return;}
-    const upd=from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty};
+    const upd={...(from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty}),...lotesPayload};
     await updateDoc(doc(db,'items',id),upd);
     await addDoc(collection(db,'devoluciones'),{insumo:name,qty,unit,entidad,motivo,obs:'Registrada desde salida',prestamoId:prId||null,fecha:tsDate(),hora:new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),createdAt:serverTimestamp()});
     if(prId){ await updateDoc(doc(db,'prestamos',prId),{estado:'devuelto',devueltoEn:ts()}).catch(()=>{}); }
-    await addLog('salida',`Devolución a ${entidad}: ${name}`,`${qty} ${unit} · ${motivo}`,mkMov(name,B0,{...B0,...upd}));
+    await addLog('salida',`Devolución a ${entidad}: ${name}`,`${qty} ${unit} · ${motivo}${loteTxt}`,mkMov(name,B0,{...B0,...upd}));
     closeM();
     window.setTabDirect('prestamos');
     return;
   }
   const dest=selDest==='__otro'?destOtro||'Otro servicio':selDest||'Servicio externo';
   if(!dest||dest==='Seleccionar servicio...'){alert('Selecciona un servicio destinatario');return;}
-  const upd=from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty};
+  const upd={...(from==='almacen'?{almacen:almacen-qty}:from==='paila'?{paila:paila-qty}:{lab:lab-qty}),...lotesPayload};
   await updateDoc(doc(db,'items',id),upd);
   const lugar=from==='almacen'?'almacén':from==='paila'?'La Paila':'laboratorio';
-  await addLog('salida',`Salida: ${name}`,`${qty} ${unit} → ${dest} (${lugar})`,mkMov(name,B0,{...B0,...upd}));
+  await addLog('salida',`Salida: ${name}`,`${qty} ${unit} → ${dest} (${lugar})${loteTxt}`,mkMov(name,B0,{...B0,...upd}));
   // Guardar en colección de salidas para historial y estadísticas
   await addDoc(collection(db,'salidas'),{
     name,qty,unit,dest,desde:lugar,
@@ -2096,9 +2229,22 @@ window.doLabToPaila=async(id,prevL,prevP,unit,name)=>{
 window.doLabToPailaDirecto=async(id,prevL,prevP,unit,name)=>{
   const qty=parseInt($('m-qty')?.value)||0;
   if(qty<=0||qty>prevL){alert('Cantidad no válida');return;}
+  const itemRef=items.find(i=>i.id===id);
+  let lotesPayload={}, loteTxt='';
+  const loteSelId=$('m-lote-ltp')?.value||'';
+  if(loteSelId&&itemRef){
+    const loteSrc=(itemRef.lotes||[]).find(l=>l.id===loteSelId);
+    if(loteSrc){
+      if(qty>loteSrc.qty){alert(`Ese lote solo tiene ${loteSrc.qty} ${unit} disponibles. Reduce la cantidad o hazlo en dos movimientos.`);return;}
+      let lotes=subLoteQty(itemRef.lotes,loteSrc.id,qty);
+      lotes=addLoteQty(lotes,'paila',loteSrc.lote,loteSrc.vencimiento,qty);
+      lotesPayload={lotes};
+      loteTxt=` · Lote ${loteSrc.lote}`;
+    }
+  }
   // Suma directo al stock de la paila (ya está físicamente allá)
-  await updateDoc(doc(db,'items',id),{lab:prevL-qty,paila:prevP+qty});
-  await addLog('transfer',`${name}: laboratorio → Microbiología (ingreso directo)`,`${qty} ${unit}`,mkMov(name,{lab:prevL,paila:prevP},{lab:prevL-qty,paila:prevP+qty}));
+  await updateDoc(doc(db,'items',id),{lab:prevL-qty,paila:prevP+qty,...lotesPayload});
+  await addLog('transfer',`${name}: laboratorio → Microbiología (ingreso directo)`,`${qty} ${unit}${loteTxt}`,mkMov(name,{lab:prevL,paila:prevP},{lab:prevL-qty,paila:prevP+qty}));
   closeM();
   const itm=items.find(i=>i.id===id);
   openM('preguntarRemisionPaila',id,{qty,unit,name,cat:itm?.cat||''});
