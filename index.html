@@ -367,6 +367,13 @@ function addLoteQty(lotesArr,ubicacion,lote,vencimiento,qty){
 function subLoteQty(lotesArr,loteId,qty){
   return (lotesArr||[]).map(l=>l.id===loteId?{...l,qty:l.qty-qty}:l).filter(l=>l.qty>0);
 }
+function vencDiasTxt(dias,color){
+  const vd=cfg.semaforoVenc||{};
+  const umbral=(vd.dias===undefined||vd.dias===null)?30:vd.dias;
+  if(dias===null||!(umbral>0)||dias>umbral) return '';
+  return ` <span style="font-size:10px;font-weight:600;color:${color};margin-left:3px;vertical-align:middle">${dias<0?'vencido':dias+'d'}</span>`;
+}
+function usoLoteTxt(u){ return u&&u.lote?` · Lote ${txt(u.lote)}${u.vencimiento?' (vence '+u.vencimiento+')':''}`:''; }
 function vencDot(item){
   if(!item.manejaVencimiento) return '';
   const urgente=lotesMasUrgente(item);
@@ -377,7 +384,7 @@ function vencDot(item){
   if(dias===null) return '';
   const color=vencColor(dias);
   const label=dias<0?`Vencido hace ${Math.abs(dias)} días (${fecha})${lote?' · Lote '+lote:''}`:`Vence en ${dias} días (${fecha})${lote?' · Lote '+lote:''}`;
-  return ` <span title="${txt(label)}" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-left:5px;vertical-align:middle;flex-shrink:0"></span>`;
+  return ` <span title="${txt(label)}" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-left:5px;vertical-align:middle;flex-shrink:0"></span>`+vencDiasTxt(dias,color);
 }
 const ts  = () => new Date().toLocaleString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
 const tsDate = () => new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
@@ -852,7 +859,7 @@ function listUso(){
         h+=`<div class="row">
           <div style="flex:1;min-width:0">
             <div class="item-name">${txt(item.name)} <span style="font-size:10px;color:#90A0B2">#${idx+1}</span></div>
-            <div class="item-sub">Desde: ${u.since||''}</div>
+            <div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div>
             ${idx===0?`<div style="font-size:10px;margin-top:2px">${stockInfo}${almInfo}</div>`:''}
           </div>
           <span class="badge b-uso">En uso</span>
@@ -873,7 +880,7 @@ function listUso(){
         h+=`<div class="row">
           <div style="flex:1;min-width:0">
             <div class="item-name">${txt(item.name)} <span style="font-size:10px;color:#90A0B2">#${idx+1}</span></div>
-            <div class="item-sub">Desde: ${u.since||''}</div>
+            <div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div>
             ${idx===0?`<div style="font-size:10px;margin-top:2px">${stockInfo}</div>`:''}
           </div>
           <span style="display:inline-flex;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:500;background:rgba(255,179,71,.15);color:#FFB347">En uso</span>
@@ -1273,7 +1280,7 @@ window.openM=(type,...args)=>{
               const dias=diasParaVencer(l.vencimiento); const color=vencColor(dias);
               return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0">
                 <span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></span>
-                <span>${l.qty} en <b>${ubicLbl[l.ubicacion]||l.ubicacion}</b> · Lote ${txt(l.lote)} · vence ${l.vencimiento}</span>
+                <span>${l.qty} en <b>${ubicLbl[l.ubicacion]||l.ubicacion}</b> · Lote ${txt(l.lote)} · vence ${l.vencimiento}${vencDiasTxt(dias,color)}</span>
               </div>`;
             }).join('')}
           </div>`;
@@ -1382,9 +1389,21 @@ window.openM=(type,...args)=>{
     // traslado interno (almacén→lab/paila, lab→paila) pregunta de cuál lote existente se mueve, solo si hay más de uno.
     let vencBlocks='';
     if(item.manejaVencimiento){
+      const distintos=[];
+      (item.lotes||[]).filter(l=>l.qty>0).forEach(l=>{ if(!distintos.find(d=>d.lote===l.lote&&d.vencimiento===l.vencimiento)) distintos.push(l); });
+      distintos.sort((a,b)=>(a.vencimiento||'').localeCompare(b.vencimiento||''));
+      const totalLote=d=>(item.lotes||[]).filter(l=>l.lote===d.lote&&l.vencimiento===d.vencimiento).reduce((a,l)=>a+l.qty,0);
       vencBlocks+=`<div id="vencNuevoWrap" style="display:none">
-        <div class="field"><label>Fecha de vencimiento *</label><input id="m-venc-fecha" type="date"></div>
-        <div class="field"><label>Lote *</label><input id="m-venc-lote" placeholder="Número de lote" autocomplete="off"></div>
+        ${distintos.length?`<div class="field"><label>¿Es de alguno de los lotes que ya tienes? *</label>
+          <select id="m-lote-existente" onchange="document.getElementById('loteNuevoCampos').style.display=this.value==='__nuevo'?'block':'none'">
+            <option value="" selected disabled>Seleccionar...</option>
+            ${distintos.map(d=>`<option value="${d.id}">Lote ${txt(d.lote)} · vence ${d.vencimiento} (${totalLote(d)} en total)</option>`).join('')}
+            <option value="__nuevo">Es un lote nuevo</option>
+          </select></div>`:''}
+        <div id="loteNuevoCampos" style="display:${distintos.length?'none':'block'}">
+          <div class="field"><label>Fecha de vencimiento *</label><input id="m-venc-fecha" type="date"></div>
+          <div class="field"><label>Lote *</label><input id="m-venc-lote" placeholder="Número de lote" autocomplete="off"></div>
+        </div>
       </div>`;
 
       const lotesAlm=lotesEnUbic(item,'almacen');
@@ -1506,7 +1525,7 @@ window.openM=(type,...args)=>{
   } else if(type==='verUsoItem'){
     if(!item) return;
     const usos=item.usoItems||[];
-    const rows=usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1} · ${txt(item.name)}</div><div class="item-sub">Desde: ${u.since||''}</div></div>
+    const rows=usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1} · ${txt(item.name)}</div><div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div></div>
       <button class="btn btn-danger btn-sm" onclick="window.retirarUso('${item.id}','${u.id}');closeM()"><i class="ti ti-door-exit"></i> Dar salida</button></div>`).join('');
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
       <h3><i class="ti ti-player-play" style="color:#F5A623"></i>En uso · ${txt(item.name)}</h3>
@@ -1518,7 +1537,7 @@ window.openM=(type,...args)=>{
   } else if(type==='verUsoItemPaila'){
     if(!item) return;
     const usos=item.pailaUsoItems||[];
-    const rows=usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1} · ${txt(item.name)}</div><div class="item-sub">Desde: ${u.since||''}</div></div>
+    const rows=usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1} · ${txt(item.name)}</div><div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div></div>
       <button class="btn btn-danger btn-sm" onclick="window.retirarUsoPaila('${item.id}','${u.id}');closeM()"><i class="ti ti-door-exit"></i> Dar salida</button></div>`).join('');
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
       <h3><i class="ti ti-player-play" style="color:#F5A623"></i>En uso (Micro) · ${txt(item.name)}</h3>
@@ -1556,7 +1575,7 @@ window.openM=(type,...args)=>{
       <h3 style="color:#F5A623">¿Estás seguro de que revisaste bien? (Microbiología)</h3>
       <div class="danger-box">Límite alcanzado para <b>${txt(item.cat)}</b> (${usos.length}/${lim}). Debes retirar al menos uno.</div>
       <div class="card"><div class="card-body">
-        ${usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1}</div><div class="item-sub">Desde: ${u.since}</div></div>
+        ${usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1}</div><div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div></div>
           <button class="btn btn-warn btn-sm" style="background:#FFB347;color:#1a0800" onclick="window.doReemplazarUsoPaila('${item.id}','${u.id}')"><i class="ti ti-refresh"></i> Reemplazar</button></div>`).join('')}
         ${usos.length>1?`<div class="row"><div style="flex:1"><div class="item-name">Retirar todos</div></div><button class="btn btn-danger btn-sm" onclick="window.doRetirarTodosYUsarPaila('${item.id}')"><i class="ti ti-trash"></i> Retirar todos</button></div>`:''}
       </div></div>
@@ -1888,7 +1907,7 @@ function openUsoConfirmFull(item){
     <div class="danger-box">Límite alcanzado para <b>${txt(item.cat)}</b> (${usos.length}/${maxUso(item.cat)}). Debes retirar al menos uno para poner otro.</div>
     <div class="sec-title">Selecciona cuál retirar</div>
     <div class="card"><div class="card-body">
-      ${usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1} · ${txt(item.name)}</div><div class="item-sub">Desde: ${u.since}</div></div>
+      ${usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1} · ${txt(item.name)}</div><div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div></div>
         <button class="btn btn-warn btn-sm" onclick="window.doReemplazarUso('${item.id}','${u.id}')"><i class="ti ti-refresh"></i> Retirar y poner nuevo</button></div>`).join('')}
       ${usos.length>1?`<div class="row"><div style="flex:1"><div class="item-name">Retirar todos y poner uno nuevo</div></div><button class="btn btn-danger btn-sm" onclick="window.doRetirarTodosYUsar('${item.id}')"><i class="ti ti-trash"></i> Retirar todos</button></div>`:''}
     </div></div>
@@ -1897,13 +1916,73 @@ function openUsoConfirmFull(item){
 }
 window.openUsoConfirmFullById=(id)=>{ const item=items.find(i=>i.id===id); if(item) openUsoConfirmFull(item); };
 
+// Pregunta de cuál lote se pone en uso (sugiere el que vence primero y avisa si se elige otro)
+function pedirLoteParaUso(itemId,ubic,cb){
+  const item=items.find(i=>i.id===itemId); if(!item) return;
+  if(!item.manejaVencimiento){ cb(null); return; }
+  const lotes=lotesEnUbic(item,ubic);
+  if(!lotes.length){ cb(null); return; }
+  if(lotes.length===1){ cb(lotes[0]); return; }
+  window._loteUsoCb=cb; window._loteUsoCtx={itemId,ubic};
+  $('modal-area').innerHTML=`<div class="modal-bg"><div class="modal">
+    <h3><i class="ti ti-player-play" style="color:#F5A623"></i>¿Cuál lote vas a poner en uso?</h3>
+    <div class="info-box" style="margin-bottom:10px">${txt(item.name)}</div>
+    <div class="card"><div class="card-body">
+      ${lotes.map((l,i)=>{
+        const dias=diasParaVencer(l.vencimiento), col=vencColor(dias);
+        return `<label class="row row-clickable" style="cursor:pointer">
+          <input type="radio" name="m-lote-uso" value="${l.id}" ${i===0?'checked':''} style="width:17px;height:17px;accent-color:#00C9B1;flex-shrink:0">
+          <span style="width:9px;height:9px;border-radius:50%;background:${col};flex-shrink:0"></span>
+          <div style="flex:1;min-width:0">
+            <div class="item-name">Lote ${txt(l.lote)}${i===0?' <span style="font-size:10px;color:#4CAF7D;font-weight:600;margin-left:4px">sugerido · vence primero</span>':''}</div>
+            <div class="item-sub">vence ${l.vencimiento}${vencDiasTxt(dias,col)} · disp: ${l.qty}</div>
+          </div>
+        </label>`;
+      }).join('')}
+    </div></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-warn" onclick="window._confirmarLoteUso()"><i class="ti ti-check"></i> Poner en uso</button></div>
+  </div></div>`;
+}
+window._confirmarLoteUso=()=>{
+  const sel=document.querySelector('input[name="m-lote-uso"]:checked');
+  if(!sel){alert('Selecciona un lote');return;}
+  const ctx=window._loteUsoCtx||{};
+  const item=items.find(i=>i.id===ctx.itemId); if(!item) return;
+  const lotes=lotesEnUbic(item,ctx.ubic);
+  const elegido=lotes.find(l=>l.id===sel.value); if(!elegido) return;
+  const primero=lotes[0];
+  if(primero&&elegido.id!==primero.id){
+    if(!confirm(`¿Estás seguro? Verifica otro lote.\n\nEl lote ${primero.lote} vence antes (${primero.vencimiento}) que el lote ${elegido.lote} (${elegido.vencimiento}).\n\n¿Poner en uso de todos modos el lote ${elegido.lote}?`)) return;
+  }
+  const cb=window._loteUsoCb; window._loteUsoCb=null;
+  if(cb) cb(elegido);
+};
+// Ejecuta el uso (lab o paila). modo: null = agregar | {reemplazar:usoId} | {todos:true}
+function ejecutarUso(itemId,ubic,lote,modo){
+  const item=items.find(i=>i.id===itemId);
+  const stockKey=ubic==='paila'?'paila':'lab';
+  const usoKey=ubic==='paila'?'pailaUsoItems':'usoItems';
+  const stock=item?(item[stockKey]||0):0;
+  if(!item||stock<=0){ closeM(); alert(ubic==='paila'?'Sin stock en Paila':'Sin stock en laboratorio'); return; }
+  const nuevo={id:genId(),name:item.name,since:ts()};
+  if(lote){ nuevo.lote=lote.lote; nuevo.vencimiento=lote.vencimiento; }
+  let previos=item[usoKey]||[];
+  let nota=`1 ${item.unit}`;
+  if(modo&&modo.reemplazar){ previos=previos.filter(x=>x.id!==modo.reemplazar); nota='Reemplazó uno anterior'; }
+  else if(modo&&modo.todos){ previos=[]; nota='Retiró todos los anteriores'; }
+  const upd={[usoKey]:[...previos,nuevo],[stockKey]:stock-1};
+  if(lote) upd.lotes=subLoteQty(item.lotes,lote.id,1);
+  const tag=ubic==='paila'?' (Micro)':'';
+  updateDoc(doc(db,'items',itemId),upd)
+    .then(()=>addLog('uso',`En uso${tag}: ${item.name}`,nota+(lote?` · Lote ${lote.lote}`:''),mkMov(item.name,{[stockKey]:stock},{[stockKey]:stock-1})));
+  closeM();
+}
+
 function doPonerEnUso(item){
   if(typeof item==='string') item=items.find(i=>i.id===item);
   if(!item||item.lab<=0){alert('Sin stock en laboratorio');return;}
-  const uid=genId(); const prevL=item.lab;
-  updateDoc(doc(db,'items',item.id),{usoItems:[...(item.usoItems||[]),{id:uid,name:item.name,since:ts()}],lab:item.lab-1})
-    .then(()=>addLog('uso',`En uso: ${item.name}`,`1 ${item.unit}`,mkMov(item.name,{lab:prevL},{lab:prevL-1})));
-  closeM();
+  const id=item.id;
+  pedirLoteParaUso(id,'lab',lote=>ejecutarUso(id,'lab',lote,null));
 }
 window.doPonerEnUso=(id)=>{ const item=items.find(i=>i.id===id); if(item) doPonerEnUso(item); };
 window.retirarUso=async(itemId,usoId)=>{
@@ -1914,25 +1993,18 @@ window.retirarUso=async(itemId,usoId)=>{
 };
 window.doReemplazarUso=(itemId,usoId)=>{
   const item=items.find(i=>i.id===itemId); if(!item||item.lab<=0){closeM();alert('Sin stock');return;}
-  const uid=genId();
-  updateDoc(doc(db,'items',itemId),{usoItems:[...(item.usoItems||[]).filter(x=>x.id!==usoId),{id:uid,name:item.name,since:ts()}],lab:item.lab-1})
-    .then(()=>addLog('uso',`En uso: ${item.name}`,`Reemplazó uno anterior`));
-  closeM();
+  pedirLoteParaUso(itemId,'lab',lote=>ejecutarUso(itemId,'lab',lote,{reemplazar:usoId}));
 };
 window.doRetirarTodosYUsar=(itemId)=>{
   const item=items.find(i=>i.id===itemId); if(!item||item.lab<=0){closeM();alert('Sin stock');return;}
-  updateDoc(doc(db,'items',itemId),{usoItems:[{id:genId(),name:item.name,since:ts()}],lab:item.lab-1})
-    .then(()=>addLog('uso',`En uso: ${item.name}`,`Retiró todos los anteriores`));
-  closeM();
+  pedirLoteParaUso(itemId,'lab',lote=>ejecutarUso(itemId,'lab',lote,{todos:true}));
 };
 
 // ── PAILA: uso ────────────────────────────────────────────────────────────────
 function doPonerEnUsoPaila(item){
   if(!item||(item.paila||0)<=0){alert('Sin stock en La Paila');return;}
-  const uid=genId(); const prevP=item.paila||0;
-  updateDoc(doc(db,'items',item.id),{pailaUsoItems:[...(item.pailaUsoItems||[]),{id:uid,name:item.name,since:ts()}],paila:(item.paila||0)-1})
-    .then(()=>addLog('uso',`En uso (Micro): ${item.name}`,`1 ${item.unit}`,mkMov(item.name,{paila:prevP},{paila:prevP-1})));
-  closeM();
+  const id=item.id;
+  pedirLoteParaUso(id,'paila',lote=>ejecutarUso(id,'paila',lote,null));
 }
 window._ponerEnUsoPailaById=(itemId)=>{
   const item=items.find(i=>i.id===itemId); if(!item) return;
@@ -1946,16 +2018,11 @@ window.retirarUsoPaila=async(itemId,usoId)=>{
 };
 window.doReemplazarUsoPaila=(itemId,usoId)=>{
   const item=items.find(i=>i.id===itemId); if(!item||(item.paila||0)<=0){closeM();alert('Sin stock en Paila');return;}
-  const uid=genId();
-  updateDoc(doc(db,'items',itemId),{pailaUsoItems:[...(item.pailaUsoItems||[]).filter(x=>x.id!==usoId),{id:uid,name:item.name,since:ts()}],paila:(item.paila||0)-1})
-    .then(()=>addLog('uso',`En uso (Micro): ${item.name}`,`Reemplazó uno anterior`));
-  closeM();
+  pedirLoteParaUso(itemId,'paila',lote=>ejecutarUso(itemId,'paila',lote,{reemplazar:usoId}));
 };
 window.doRetirarTodosYUsarPaila=(itemId)=>{
   const item=items.find(i=>i.id===itemId); if(!item||(item.paila||0)<=0){closeM();alert('Sin stock en Paila');return;}
-  updateDoc(doc(db,'items',itemId),{pailaUsoItems:[{id:genId(),name:item.name,since:ts()}],paila:(item.paila||0)-1})
-    .then(()=>addLog('uso',`En uso (Micro): ${item.name}`,`Retiró todos los anteriores`));
-  closeM();
+  pedirLoteParaUso(itemId,'paila',lote=>ejecutarUso(itemId,'paila',lote,{todos:true}));
 };
 
 // ── PEDIDOS OPS ───────────────────────────────────────────────────────────────
@@ -2065,8 +2132,18 @@ window.doIngreso=async(id,from,prevA,prevL,unit,name,prevP=0)=>{
   let vencUpd={}, lotesFinal=itemRef?.lotes||[], loteOrigenUsado=null;
   if(itemRef?.manejaVencimiento){
     if(esStockNuevo){
-      const vFecha=$('m-venc-fecha')?.value||'', vLote=$('m-venc-lote')?.value.trim()||'';
-      if(!vFecha||!vLote){alert('Este insumo requiere fecha de vencimiento y lote para registrar el ingreso');return;}
+      let vFecha='', vLote='';
+      const selEl=$('m-lote-existente');
+      const selEx=selEl?.value||'';
+      if(selEl&&!selEx){alert('Indica si el ingreso es de un lote que ya tienes o si es un lote nuevo');return;}
+      if(selEx&&selEx!=='__nuevo'){
+        const ref=(itemRef.lotes||[]).find(l=>l.id===selEx);
+        if(!ref){alert('No se encontró ese lote, vuelve a intentarlo');return;}
+        vFecha=ref.vencimiento; vLote=ref.lote;
+      } else {
+        vFecha=$('m-venc-fecha')?.value||''; vLote=$('m-venc-lote')?.value.trim()||'';
+        if(!vFecha||!vLote){alert('Este insumo requiere fecha de vencimiento y lote para registrar el ingreso');return;}
+      }
       vencUpd={vencimiento:vFecha,lote:vLote};
       const destUbic=from==='lab'?'lab':from==='paila'?'paila':'almacen';
       lotesFinal=addLoteQty(lotesFinal,destUbic,vLote,vFecha,qty);
@@ -2256,7 +2333,7 @@ window._abrirConfirmFullPaila=(id)=>{
     <h3 style="color:#F5A623">¿Estás seguro de que revisaste bien? (Microbiología)</h3>
     <div class="danger-box">Límite alcanzado (${usos.length}/${maxUso(item.cat)}). Elige cuál retirar:</div>
     <div class="card"><div class="card-body">
-      ${usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1}</div><div class="item-sub">Desde: ${u.since}</div></div>
+      ${usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1}</div><div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div></div>
         <button class="btn btn-warn btn-sm" style="background:#FFB347;color:#1a0800" onclick="window.doReemplazarUsoPaila('${item.id}','${u.id}')"><i class="ti ti-refresh"></i> Reemplazar</button></div>`).join('')}
       ${usos.length>1?`<div class="row"><div style="flex:1"><div class="item-name">Retirar todos</div></div><button class="btn btn-danger btn-sm" onclick="window.doRetirarTodosYUsarPaila('${item.id}')"><i class="ti ti-trash"></i> Todos</button></div>`:''}
     </div></div>
@@ -3158,6 +3235,11 @@ window.openUserModal=(type)=>{
           <input id="m-sf-verde" type="number" min="1" value="${vd.verde}" oninput="document.getElementById('sfAmarilloMax').textContent=this.value">
         </div>
 
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:6px"><i class="ti ti-hourglass" style="color:#90A0B2"></i> Cuenta regresiva — mostrar los días que faltan cuando falten MENOS de (días)</label>
+          <input id="m-sf-dias" type="number" min="0" value="${(vd.dias===undefined||vd.dias===null)?30:vd.dias}">
+          <div style="font-size:11px;color:#90A0B2;margin-top:2px">Junto al puntico aparecerá, por ejemplo, "12d". Pon 0 para no mostrarla nunca.</div>
+        </div>
         <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-accent" onclick="window.guardarSemaforo()"><i class="ti ti-check"></i> Guardar</button></div>
       </div></div>`;
     });
@@ -3291,7 +3373,9 @@ window.guardarSemaforo=async()=>{
   const verde=parseInt($('m-sf-verde')?.value)||365;
   const amarillo=parseInt($('m-sf-rojo')?.value)||180;
   if(amarillo>=verde){alert('El umbral rojo debe ser menor que el verde, para que quede espacio para el amarillo');return;}
-  cfg.semaforoVenc={verde,amarillo};
+  const diasRaw=parseInt($('m-sf-dias')?.value);
+  const dias=isNaN(diasRaw)||diasRaw<0?30:diasRaw;
+  cfg.semaforoVenc={verde,amarillo,dias};
   await saveCfg();
   closeM();
 };
