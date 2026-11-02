@@ -1,4 +1,4 @@
-const CACHE = 'hdsr-v11';
+const CACHE = 'hdsr-v12';
 const ASSETS = ['./index.html'];
 
 self.addEventListener('install', e => {

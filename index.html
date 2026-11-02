@@ -121,6 +121,7 @@ html,body{background:#131B24;color:#E9EEF3;font-family:system-ui,-apple-system,s
   .row-clickable:hover{border-color:#B9C4D0;box-shadow:0 3px 10px rgba(16,32,43,.09);transform:translateY(-1px)}
 }
 .row-clickable:active{opacity:.85}
+.nivel-btn{background:none;border:none;padding:0;cursor:pointer;display:inline-flex;align-items:center;font-family:inherit}
 .item-name{font-weight:500;color:#E9EEF3;font-size:13px}
 .item-sub{font-size:11px;color:#90A0B2;margin-top:1px}
 .badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap}
@@ -372,6 +373,54 @@ function vencDiasTxt(dias,color){
   const umbral=(vd.dias===undefined||vd.dias===null)?30:vd.dias;
   if(dias===null||!(umbral>0)||dias>umbral) return '';
   return ` <span style="font-size:10px;font-weight:600;color:${color};margin-left:3px;vertical-align:middle">${dias<0?'vencido':dias+'d'}</span>`;
+}
+function nivelDe(item,u){
+  const total=(u&&u.total)||item.unidadesPorCaja||0;
+  const restantes=(u&&typeof u.restantes==='number')?u.restantes:total;
+  return {total,restantes};
+}
+function nivelBarHTML(item,u,compact){
+  const n=nivelDe(item,u);
+  const pct=n.total>0?Math.max(0,Math.min(100,Math.round(n.restantes/n.total*100))):0;
+  const col=pct>50?'#4CAF7D':pct>25?'#F5A623':'#E8484A';
+  const track='rgba(144,160,178,.22)';
+  const h=compact?7:12, w=compact?'54px':'100%';
+  let bar,label;
+  if(item.nivelModo==='promedio'){
+    const segs=n.restantes<=0?0:Math.max(1,Math.ceil(pct/25));
+    bar=`<span style="display:flex;gap:2px;width:${w};height:${h}px">${[1,2,3,4].map(k=>`<span style="flex:1;border-radius:2px;background:${k<=segs?col:track}"></span>`).join('')}</span>`;
+    label=['Vacía','Casi vacío','½','¾','Lleno'][segs];
+  } else {
+    bar=`<span style="display:block;width:${w};height:${h}px;border-radius:${h}px;background:${track};overflow:hidden"><span style="display:block;width:${pct}%;height:100%;border-radius:${h}px;background:${col}"></span></span>`;
+    label=`${n.restantes}/${n.total}`;
+  }
+  return `<span style="display:inline-flex;align-items:center;gap:6px;width:${compact?'auto':'100%'}">${bar}<span style="font-size:${compact?10:12}px;font-weight:600;color:${col};white-space:nowrap">${label}</span></span>`;
+}
+function nivelBtnHTML(item,u,ubic){
+  const modal=ubic==='paila'?'verUsoItemPaila':'verUsoItem';
+  return `<button class="nivel-btn" onclick="event.stopPropagation();window.openM('${modal}','${item.id}')" title="Ver cuántas quedan">${nivelBarHTML(item,u,true)}</button>`;
+}
+function nivelListHTML(item,ubic){
+  if(!item.nivelUso) return '';
+  const arr=(ubic==='paila'?item.pailaUsoItems:item.usoItems)||[];
+  if(!arr.length) return '';
+  return arr.slice(0,3).map(u=>`<br><span style="display:inline-block;margin-top:3px">${nivelBtnHTML(item,u,ubic)}</span>`).join('')
+    +(arr.length>3?`<br><span style="font-size:10px;color:#90A0B2">+${arr.length-3} más</span>`:'');
+}
+function nivelControlesHTML(item,ubic,u){
+  const n=nivelDe(item,u);
+  const pct=n.total>0?Math.round(n.restantes/n.total*100):0;
+  const bajo=n.restantes<=0||pct<=25;
+  return `<div style="flex-basis:100%;width:100%;margin-top:6px">
+    ${nivelBarHTML(item,u,false)}
+    <div style="font-size:12px;color:#90A0B2;margin-top:5px">Quedan <b style="color:#E9EEF3">${n.restantes}</b> de ${n.total} unidades en esta caja</div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">
+      <input id="m-niv-${u.id}" type="number" min="1" max="${Math.max(1,n.restantes)}" value="1" style="width:60px;background:#131B24;border:1px solid #2A3A4C;border-radius:5px;padding:4px 6px;color:#E9EEF3;-webkit-text-fill-color:#E9EEF3;font-size:12px;outline:none">
+      <button class="btn btn-warn btn-sm" onclick="window.sacarUnidades('${item.id}','${ubic}','${u.id}')"><i class="ti ti-minus"></i> Sacar</button>
+      <button class="btn btn-ghost btn-sm" onclick="window.ajustarNivel('${item.id}','${ubic}','${u.id}',1)" title="Corregir: devolver una unidad a la caja"><i class="ti ti-plus"></i> Corregir +1</button>
+    </div>
+    ${bajo?`<div style="margin-top:6px;font-size:11px;color:#F5A623"><i class="ti ti-alert-triangle"></i> Se está acabando${item._pedidoPendiente?' · ya está en la lista de pedido':` <button class="btn btn-purple btn-sm" style="margin-left:6px" onclick="window.quickPedir('${item.id}')"><i class="ti ti-shopping-cart"></i> Agregar a pedido</button>`}</div>`:''}
+  </div>`;
 }
 function usoLoteTxt(u){ return u&&u.lote?` · Lote ${txt(u.lote)}${u.vencimiento?' (vence '+u.vencimiento+')':''}`:''; }
 function vencDot(item){
@@ -720,7 +769,7 @@ function listLab(){
         ${labAgotado
           ? `<span class="badge b-zero" style="display:inline-flex">Stock: 0</span>`
           : `<span class="badge b-stock" style="display:inline-flex">Stock: ${stockLab}</span>`}
-        ${eu>0?`<br><button class="badge b-uso" style="margin-top:3px" onclick="event.stopPropagation();window.openM('verUsoItem','${item.id}')">En uso: ${eu}</button>`:''}
+        ${eu>0?`<br><button class="badge b-uso" style="margin-top:3px" onclick="event.stopPropagation();window.openM('verUsoItem','${item.id}')">En uso: ${eu}</button>`:''}${nivelListHTML(item,'lab')}
       </div>`;
     }
     h+=`<div class="row row-clickable" style="flex-wrap:wrap;align-items:flex-start" onclick="window.openItemDetail('${item.id}')">
@@ -814,7 +863,7 @@ function listPaila(){
         ${pailaAgotada
           ? `<span class="badge b-zero" style="display:inline-flex">Micro: 0</span>`
           : `<span class="badge b-paila" style="display:inline-flex">Paila: ${stockP}</span>`}
-        ${eu>0?`<br><button class="badge b-uso" style="margin-top:3px" onclick="event.stopPropagation();window.openM('verUsoItemPaila','${item.id}')">En uso: ${eu}</button>`:''}
+        ${eu>0?`<br><button class="badge b-uso" style="margin-top:3px" onclick="event.stopPropagation();window.openM('verUsoItemPaila','${item.id}')">En uso: ${eu}</button>`:''}${nivelListHTML(item,'paila')}
         ${qtyCamino>0?`<br><span style="display:inline-flex;margin-top:3px;padding:2px 6px;border-radius:20px;font-size:10px;background:rgba(124,92,191,.18);color:#A78BFA"><i class="ti ti-truck" style="font-size:9px;margin-right:3px"></i>${qtyCamino} en camino</span>`:''}
       </div>`;
     }
@@ -860,6 +909,7 @@ function listUso(){
           <div style="flex:1;min-width:0">
             <div class="item-name">${txt(item.name)} <span style="font-size:10px;color:#90A0B2">#${idx+1}</span></div>
             <div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div>
+            ${item.nivelUso?`<div style="margin-top:4px">${nivelBtnHTML(item,u,'lab')}</div>`:''}
             ${idx===0?`<div style="font-size:10px;margin-top:2px">${stockInfo}${almInfo}</div>`:''}
           </div>
           <span class="badge b-uso">En uso</span>
@@ -881,6 +931,7 @@ function listUso(){
           <div style="flex:1;min-width:0">
             <div class="item-name">${txt(item.name)} <span style="font-size:10px;color:#90A0B2">#${idx+1}</span></div>
             <div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div>
+            ${item.nivelUso?`<div style="margin-top:4px">${nivelBtnHTML(item,u,'paila')}</div>`:''}
             ${idx===0?`<div style="font-size:10px;margin-top:2px">${stockInfo}</div>`:''}
           </div>
           <span style="display:inline-flex;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:500;background:rgba(255,179,71,.15);color:#FFB347">En uso</span>
@@ -1259,6 +1310,17 @@ window.openM=(type,...args)=>{
         <input type="checkbox" id="m-venc" style="width:16px;height:16px;cursor:pointer">
         <label for="m-venc" style="margin:0;cursor:pointer">Controla fecha de vencimiento (pedirá fecha y lote en cada ingreso)</label>
       </div>
+      <div class="field" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="m-nivel" onchange="document.getElementById('nivelCampos').style.display=this.checked?'block':'none'">
+        <label for="m-nivel" style="margin:0;cursor:pointer">Mostrar el nivel de la caja en uso (se descuenta unidad por unidad)</label>
+      </div>
+      <div id="nivelCampos" style="display:none">
+        <div class="field"><label>Unidades por caja</label><input id="m-nivel-unid" type="number" min="2" placeholder="Ej: 20"></div>
+        <div class="field"><label>Cómo mostrar el nivel</label><select id="m-nivel-modo">
+          <option value="unidades">Por unidades (ej: 14/20)</option>
+          <option value="promedio">Aproximado (barra: lleno, ¾, ½, casi vacío)</option>
+        </select></div>
+      </div>
       <div class="modal-actions"><button class="btn btn-ghost" onclick="closeM()">Cancelar</button><button class="btn btn-accent" onclick="window.doAdd()"><i class="ti ti-check"></i> Agregar</button></div>
     </div></div>`;
 
@@ -1325,6 +1387,17 @@ window.openM=(type,...args)=>{
       <div class="field" style="display:flex;align-items:center;gap:8px">
         <input type="checkbox" id="m-venc" ${item.manejaVencimiento?'checked':''} style="width:16px;height:16px;cursor:pointer">
         <label for="m-venc" style="margin:0;cursor:pointer">Controla fecha de vencimiento (pedirá fecha y lote en cada ingreso)</label>
+      </div>
+      <div class="field" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="m-nivel" ${item.nivelUso?'checked':''} onchange="document.getElementById('nivelCampos').style.display=this.checked?'block':'none'">
+        <label for="m-nivel" style="margin:0;cursor:pointer">Mostrar el nivel de la caja en uso (se descuenta unidad por unidad)</label>
+      </div>
+      <div id="nivelCampos" style="display:${item.nivelUso?'block':'none'}">
+        <div class="field"><label>Unidades por caja</label><input id="m-nivel-unid" type="number" min="2" value="${item.unidadesPorCaja||''}" placeholder="Ej: 20"></div>
+        <div class="field"><label>Cómo mostrar el nivel</label><select id="m-nivel-modo">
+          <option value="unidades" ${item.nivelModo!=='promedio'?'selected':''}>Por unidades (ej: 14/20)</option>
+          <option value="promedio" ${item.nivelModo==='promedio'?'selected':''}>Aproximado (barra: lleno, ¾, ½, casi vacío)</option>
+        </select></div>
       </div>
       ${item.manejaVencimiento&&item.vencimiento?`<div class="info-box" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span>Vence: <b>${txt(item.vencimiento)}</b>${item.lote?` · Lote: <b>${txt(item.lote)}</b>`:''}</span><button class="btn btn-ghost btn-sm" onclick="window.openM('editVenc','${item.id}')" title="Editar fecha y lote"><i class="ti ti-pencil" style="color:#00C9B1"></i></button></div>`:''}
       <div class="modal-actions">
@@ -1525,8 +1598,8 @@ window.openM=(type,...args)=>{
   } else if(type==='verUsoItem'){
     if(!item) return;
     const usos=item.usoItems||[];
-    const rows=usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1} · ${txt(item.name)}</div><div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div></div>
-      <button class="btn btn-danger btn-sm" onclick="window.retirarUso('${item.id}','${u.id}');closeM()"><i class="ti ti-door-exit"></i> Dar salida</button></div>`).join('');
+    const rows=usos.map((u,i)=>`<div class="row" style="flex-wrap:wrap"><div style="flex:1;min-width:0"><div class="item-name">#${i+1} · ${txt(item.name)}</div><div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div></div>
+      <button class="btn btn-danger btn-sm" onclick="window.retirarUso('${item.id}','${u.id}');closeM()"><i class="ti ti-door-exit"></i> Dar salida</button>${item.nivelUso?nivelControlesHTML(item,'lab',u):''}</div>`).join('');
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
       <h3><i class="ti ti-player-play" style="color:#F5A623"></i>En uso · ${txt(item.name)}</h3>
       <div class="info-box" style="margin-bottom:10px">Stock lab: <b style="color:#00C9B1">${item.lab}</b> · En uso: <b style="color:#F5A623">${usos.length}</b></div>
@@ -1537,8 +1610,8 @@ window.openM=(type,...args)=>{
   } else if(type==='verUsoItemPaila'){
     if(!item) return;
     const usos=item.pailaUsoItems||[];
-    const rows=usos.map((u,i)=>`<div class="row"><div style="flex:1;min-width:0"><div class="item-name">#${i+1} · ${txt(item.name)}</div><div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div></div>
-      <button class="btn btn-danger btn-sm" onclick="window.retirarUsoPaila('${item.id}','${u.id}');closeM()"><i class="ti ti-door-exit"></i> Dar salida</button></div>`).join('');
+    const rows=usos.map((u,i)=>`<div class="row" style="flex-wrap:wrap"><div style="flex:1;min-width:0"><div class="item-name">#${i+1} · ${txt(item.name)}</div><div class="item-sub">Desde: ${u.since||''}${usoLoteTxt(u)}</div></div>
+      <button class="btn btn-danger btn-sm" onclick="window.retirarUsoPaila('${item.id}','${u.id}');closeM()"><i class="ti ti-door-exit"></i> Dar salida</button>${item.nivelUso?nivelControlesHTML(item,'paila',u):''}</div>`).join('');
     area.innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal">
       <h3><i class="ti ti-player-play" style="color:#F5A623"></i>En uso (Micro) · ${txt(item.name)}</h3>
       <div class="info-box" style="margin-bottom:10px">Stock Micro: <b style="color:#FFB347">${item.paila||0}</b> · En uso: <b style="color:#F5A623">${usos.length}</b></div>
@@ -1871,6 +1944,30 @@ window.openM=(type,...args)=>{
 };
 
 window.openItemDetail=(id)=>{ window.openM('itemDetail',id); };
+window.sacarUnidades=(itemId,ubic,usoId)=>{
+  const n=parseInt(document.getElementById('m-niv-'+usoId)?.value)||1;
+  window.ajustarNivel(itemId,ubic,usoId,-Math.abs(n));
+};
+window.ajustarNivel=(itemId,ubic,usoId,delta)=>{
+  const item=items.find(i=>i.id===itemId); if(!item) return;
+  const usoKey=ubic==='paila'?'pailaUsoItems':'usoItems';
+  const arr=item[usoKey]||[];
+  const u=arr.find(x=>x.id===usoId); if(!u) return;
+  const n=nivelDe(item,u);
+  if(n.restantes+delta<0){alert(`En esta caja solo quedan ${n.restantes} unidades`);return;}
+  const nuevo=Math.min(n.total,n.restantes+delta);
+  const nuevoArr=arr.map(x=>x.id===usoId?{...x,total:n.total,restantes:nuevo}:x);
+  item[usoKey]=nuevoArr; // actualización inmediata en pantalla; Firestore confirma enseguida
+  updateDoc(doc(db,'items',itemId),{[usoKey]:nuevoArr}).catch(()=>{});
+  const modal=ubic==='paila'?'verUsoItemPaila':'verUsoItem';
+  if(nuevo===0){
+    if(confirm('La caja se acabó. ¿Darle salida (retirarla del uso) ahora?')){
+      if(ubic==='paila') window.retirarUsoPaila(itemId,usoId); else window.retirarUso(itemId,usoId);
+      closeM(); return;
+    }
+  }
+  window.openM(modal,itemId);
+};
 window.doEditVenc=async(id)=>{
   const fecha=$('m-ev-fecha')?.value||'', lote=$('m-ev-lote')?.value.trim()||'';
   if(!fecha||!lote){alert('Completa la fecha de vencimiento y el lote');return;}
@@ -1966,6 +2063,7 @@ function ejecutarUso(itemId,ubic,lote,modo){
   if(!item||stock<=0){ closeM(); alert(ubic==='paila'?'Sin stock en Paila':'Sin stock en laboratorio'); return; }
   const nuevo={id:genId(),name:item.name,since:ts()};
   if(lote){ nuevo.lote=lote.lote; nuevo.vencimiento=lote.vencimiento; }
+  if(item.nivelUso&&item.unidadesPorCaja>=2){ nuevo.total=item.unidadesPorCaja; nuevo.restantes=item.unidadesPorCaja; }
   let previos=item[usoKey]||[];
   let nota=`1 ${item.unit}`;
   if(modo&&modo.reemplazar){ previos=previos.filter(x=>x.id!==modo.reemplazar); nota='Reemplazó uno anterior'; }
@@ -2106,11 +2204,18 @@ window.imprimirPedido=(id)=>{
 };
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
+function leerNivelForm(){
+  const on=$('m-nivel')?.checked===true;
+  const unid=parseInt($('m-nivel-unid')?.value)||0;
+  if(on&&unid<2){alert('Indica cuántas unidades trae cada caja (mínimo 2) para mostrar el nivel');return null;}
+  return {nivelUso:on,unidadesPorCaja:on?unid:0,nivelModo:$('m-nivel-modo')?.value==='promedio'?'promedio':'unidades'};
+}
 window.doAdd=async()=>{
   const name=$('m-name')?.value.trim(); if(!name){alert('Escribe el nombre del insumo');return;}
   const areasSel=[...document.querySelectorAll('.m-area-chk:checked')].map(c=>c.value);
   const manejaVenc=$('m-venc')?.checked===true;
-  await addDoc(collection(db,'items'),{name,cat:$('m-cat').value,unit:$('m-unit').value,almacen:parseInt($('m-qty').value)||0,lab:0,usoItems:[],min:parseInt($('m-min').value)||2,_pedidoPendiente:false,sinonimos:$('m-sin')?.value.trim()||'',areas:areasSel,manejaVencimiento:manejaVenc});
+  const nivelData=leerNivelForm(); if(!nivelData) return;
+  await addDoc(collection(db,'items'),{name,cat:$('m-cat').value,unit:$('m-unit').value,almacen:parseInt($('m-qty').value)||0,lab:0,usoItems:[],min:parseInt($('m-min').value)||2,_pedidoPendiente:false,sinonimos:$('m-sin')?.value.trim()||'',areas:areasSel,manejaVencimiento:manejaVenc,...nivelData});
   await addLog('nuevo',`Insumo creado: ${name}`,`Almacén inicial: ${parseInt($('m-qty').value)||0} ${$('m-unit').value}`);
   closeM();
 };
@@ -2118,8 +2223,9 @@ window.doEdit=async(id,prevA,prevL,prevP=0)=>{
   const name=$('m-name')?.value.trim(); if(!name) return;
   const areasSelEdit=[...document.querySelectorAll('.m-area-chk:checked')].map(c=>c.value);
   const manejaVencEdit=$('m-venc')?.checked===true;
+  const nivelDataEdit=leerNivelForm(); if(!nivelDataEdit) return;
   const newA=parseInt($('m-almacen').value)||0, newL=parseInt($('m-lab').value)||0, newP=parseInt($('m-paila').value)||0;
-  await updateDoc(doc(db,'items',id),{name,cat:$('m-cat').value,unit:$('m-unit').value,almacen:newA,lab:newL,paila:newP,min:parseInt($('m-min').value)||2,sinonimos:$('m-sin')?.value.trim()||'',areas:areasSelEdit,manejaVencimiento:manejaVencEdit});
+  await updateDoc(doc(db,'items',id),{name,cat:$('m-cat').value,unit:$('m-unit').value,almacen:newA,lab:newL,paila:newP,min:parseInt($('m-min').value)||2,sinonimos:$('m-sin')?.value.trim()||'',areas:areasSelEdit,manejaVencimiento:manejaVencEdit,...nivelDataEdit});
   await addLog('edit',`Editado: ${name}`,`Almacén: ${prevA}→${newA}, Laboratorio: ${prevL}→${newL}`,mkMov(name,{almacen:prevA,lab:prevL,paila:prevP},{almacen:newA,lab:newL,paila:newP}));
   closeM();
 };
